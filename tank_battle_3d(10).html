@@ -1,0 +1,2976 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Танковый бой 3D</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  :root {
+    --bg:#14150f; --panel:#22241b; --accent:#c9a13b; --accent2:#7a8f4a;
+    --danger:#a8402f; --text:#e8e4d4; --muted:#8b8b78;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:'Segoe UI',Arial,sans-serif; overflow:hidden; height:100vh; }
+  #canvasWrap { position:absolute; inset:0; }
+  canvas { display:block; }
+
+  /* ===== HANGAR UI ===== */
+  #hangarUI {
+    position:absolute; inset:0; display:flex; flex-direction:column; justify-content:space-between;
+    pointer-events:none; z-index:20;
+  }
+  #hangarTop { display:flex; justify-content:space-between; padding:20px 30px; pointer-events:auto; }
+  #hangarTitle { font-size:22px; letter-spacing:3px; color:var(--accent); text-shadow:0 2px 6px #000; }
+  #hangarStats { text-align:right; font-size:13px; color:var(--muted); }
+  #hangarStats b { color:var(--accent); }
+
+  #classPicker { display:flex; gap:10px; justify-content:center; padding-bottom:14px; pointer-events:auto; flex-wrap:wrap; }
+  #mapPicker { pointer-events:auto; padding-bottom:6px; }
+  #equipPicker { pointer-events:auto; padding-bottom:6px; display:flex; gap:16px; justify-content:center; flex-wrap:wrap; }
+  .equipSlot { text-align:center; }
+  .equipSlotLabel { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px; }
+  .equipOptions { display:flex; gap:4px; }
+  .equipItem {
+    width:80px; padding:5px 4px; font-size:9.5px; text-align:center; cursor:pointer; border-radius:3px;
+    background:rgba(34,36,27,0.9); color:var(--muted); border:1px solid var(--muted); line-height:1.3;
+  }
+  .equipItem.active { background:rgba(122,143,74,0.3); border-color:var(--accent2); color:var(--text); }
+  .equipItem b { display:block; color:var(--accent); font-size:10.5px; margin-bottom:2px; }
+  .classCard {
+    background:rgba(34,36,27,0.9); border:2px solid var(--muted); border-radius:6px; padding:10px 14px;
+    width:138px; cursor:pointer; transition:0.15s; backdrop-filter: blur(4px);
+  }
+  .classCard:hover { border-color:var(--accent); }
+  .classCard.selected { border-color:var(--accent2); background:rgba(122,143,74,0.2); }
+  .classCard h3 { margin:0 0 6px; font-size:15px; color:var(--accent); letter-spacing:1px; }
+  .classCard .row { display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin-top:3px; }
+  .classCard .row span:last-child { color:var(--text); }
+
+  #hangarBottom { display:flex; justify-content:center; padding-bottom:36px; pointer-events:auto; }
+
+  #modePicker { display:flex; justify-content:center; gap:10px; padding:10px 0; pointer-events:auto; }
+  .modeBtn {
+    padding:8px 20px; font-size:12px; letter-spacing:1px; cursor:pointer; border-radius:3px;
+    background:rgba(34,36,27,0.9); color:var(--muted); border:1px solid var(--muted);
+  }
+  .modeBtn.active { background:var(--accent2); color:#111; border-color:var(--accent2); }
+  #roomPanel {
+    display:none; justify-content:center; align-items:center; gap:8px; padding-bottom:10px; pointer-events:auto;
+  }
+  #roomPanel input {
+    padding:7px 10px; font-size:13px; background:rgba(20,21,15,0.85); border:1px solid var(--muted);
+    color:var(--text); border-radius:3px; width:140px; letter-spacing:1px;
+  }
+  #roomPanel button {
+    padding:8px 16px; font-size:12px; background:var(--accent); color:#111; border:none; border-radius:3px;
+    cursor:pointer; letter-spacing:1px;
+  }
+  #roomStatus { font-size:12px; color:var(--muted); min-width:160px; }
+  #roomStatus.ok { color:var(--accent2); }
+  #roomStatus.err { color:var(--danger); }
+  #battleBtn {
+    padding:16px 52px; font-size:18px; letter-spacing:3px; background:var(--accent2); color:#111;
+    border:none; cursor:pointer; text-transform:uppercase; border-radius:4px; font-weight:bold;
+  }
+  #battleBtn:hover { background:var(--accent); }
+
+  /* ===== BATTLE HUD ===== */
+  #battleHUD { position:absolute; inset:0; pointer-events:none; z-index:15; display:none; }
+  #topBars { display:flex; justify-content:center; align-items:center; gap:14px; padding-top:14px; }
+  .teamBar { width:220px; height:16px; background:#111; border:1px solid var(--muted); }
+  .teamBarFill { height:100%; }
+  #timerVal { font-size:22px; letter-spacing:2px; min-width:70px; text-align:center; }
+
+  #crosshair {
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    width:36px; height:36px;
+  }
+  #crosshair::before, #crosshair::after { content:''; position:absolute; background:var(--accent); }
+  #crosshair::before { width:2px; height:36px; left:17px; }
+  #crosshair::after { width:36px; height:2px; top:17px; }
+
+  #bottomCenterPanel {
+    position:absolute; bottom:20px; left:50%; transform:translateX(-50%); width:280px; text-align:center;
+    pointer-events:auto;
+  }
+  #ammoRow { margin-bottom:8px; }
+  #ammoRow span {
+    display:inline-block; padding:4px 12px; margin:0 2px; border:1px solid var(--muted); cursor:pointer;
+    font-size:12px; border-radius:3px; background:rgba(20,21,15,0.7);
+  }
+  #ammoRow span.active { background:var(--accent); color:#111; border-color:var(--accent); font-weight:bold; }
+  #reloadWrap { width:280px; }
+  #reloadBar { height:8px; background:#111; border:1px solid var(--muted); }
+  #reloadFill { height:100%; background:var(--accent); width:100%; }
+  #reloadLabel { font-size:11px; color:var(--muted); margin-top:4px; }
+
+  #selfPanel {
+    position:absolute; bottom:16px; left:16px; width:230px; background:rgba(20,21,15,0.78);
+    border:1px solid var(--muted); padding:10px; border-radius:4px; pointer-events:auto;
+  }
+  #selfNameRow { display:flex; justify-content:space-between; align-items:baseline; }
+  #selfName { font-size:13px; color:var(--accent); }
+  #selfHpText { font-size:12px; color:var(--text); }
+  #selfHpBar { height:12px; background:#111; border:1px solid var(--muted); margin-top:6px; }
+  #selfHpFill { height:100%; background:var(--accent2); width:100%; }
+
+  #moduleRow { display:flex; align-items:center; gap:6px; margin-top:8px; }
+  .moduleIcon {
+    width:26px; height:26px; border-radius:3px; background:rgba(122,143,74,0.25); border:1px solid var(--accent2);
+    display:flex; align-items:center; justify-content:center; font-size:13px; color:var(--accent2);
+  }
+  .moduleIcon.broken { background:rgba(168,64,47,0.4); border-color:var(--danger); color:var(--danger); animation: modBlink 1s infinite; }
+  @keyframes modBlink { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+  #repairBtn {
+    margin-left:auto; background:rgba(201,161,59,0.15); border:1px solid var(--accent); color:var(--accent);
+    font-size:11px; padding:4px 8px; border-radius:3px; cursor:pointer;
+  }
+  #repairBtn:disabled { opacity:0.35; cursor:default; }
+
+  #minimap {
+    position:absolute; bottom:16px; right:16px; width:200px; height:200px;
+    background:rgba(20,21,15,0.85); border:2px solid var(--muted); border-radius:4px;
+  }
+
+  #hitLog { position:absolute; top:70px; right:16px; width:230px; font-size:12px; color:var(--muted); text-align:right; }
+
+  #teamRoster { position:absolute; top:60px; left:14px; width:190px; font-size:11px; pointer-events:none; }
+  .rosterGroup { margin-bottom:8px; }
+  .rosterGroup .rosterLabel { color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-size:9px; margin-bottom:3px; }
+  .rosterEntry { display:flex; align-items:center; gap:6px; background:rgba(20,21,15,0.55); border-radius:2px; padding:2px 6px; margin-bottom:2px; }
+  .rosterEntry.dead { opacity:0.35; text-decoration:line-through; }
+  .rosterEntry .rClass { flex:1; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .rosterEntry .rHpBarWrap { width:44px; height:5px; background:#111; border-radius:2px; overflow:hidden; }
+  .rosterEntry .rHpBarFill { height:100%; }
+  .rosterEntry.ally .rHpBarFill { background:var(--accent2); }
+  .rosterEntry.enemy .rHpBarFill { background:var(--danger); }
+  #hitLog div { margin-bottom:3px; }
+
+  #viewModeHint { position:absolute; bottom:16px; right:16px; font-size:11px; color:var(--muted); text-align:right; }
+
+  #spreadCircle {
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    border:1.5px solid rgba(201,161,59,0.85); border-radius:50%;
+    width:80px; height:80px; transition: width 0.15s, height 0.15s;
+  }
+
+  #ramFlash {
+    position:absolute; inset:0; background:rgba(168,64,47,0.35); opacity:0; pointer-events:none;
+    transition: opacity 0.4s;
+  }
+  #ramFlash.show { opacity:1; transition: opacity 0.02s; }
+
+  /* ===== МОБИЛЬНОЕ УПРАВЛЕНИЕ ===== */
+  #mobileToggle {
+    position:absolute; top:20px; left:20px; z-index:60; padding:6px 12px; font-size:11px;
+    background:rgba(34,36,27,0.85); color:var(--muted); border:1px solid var(--muted); border-radius:4px;
+    cursor:pointer; letter-spacing:1px;
+  }
+  #mobileControls { position:absolute; inset:0; display:none; pointer-events:none; z-index:25; }
+  #mobileControls.active { display:block; }
+  #joystickZone {
+    position:absolute; left:24px; bottom:24px; width:130px; height:130px;
+    border-radius:50%; background:rgba(30,32,24,0.45); border:2px solid rgba(201,161,59,0.5);
+    pointer-events:auto; touch-action:none;
+  }
+  #joystickStick {
+    position:absolute; left:50%; top:50%; width:56px; height:56px; margin:-28px 0 0 -28px;
+    border-radius:50%; background:rgba(201,161,59,0.75); border:2px solid var(--accent);
+  }
+  #aimZone {
+    position:absolute; right:0; top:0; bottom:150px; left:50%;
+    pointer-events:auto; touch-action:none;
+  }
+  #fireBtnMobile {
+    position:absolute; right:30px; bottom:36px; width:84px; height:84px; border-radius:50%;
+    background:rgba(168,64,47,0.75); border:3px solid var(--danger); color:#fff; font-size:12px;
+    letter-spacing:1px; pointer-events:auto; touch-action:none;
+  }
+  #sniperBtnMobile {
+    position:absolute; right:40px; bottom:132px; width:64px; height:64px; border-radius:50%;
+    background:rgba(34,36,27,0.85); border:2px solid var(--accent); color:var(--accent); font-size:10px;
+    pointer-events:auto; touch-action:none;
+  }
+
+  /* ===== ЗАСВЕТ ===== */
+  .spotIndicator {
+    position:absolute; pointer-events:none; color:var(--danger); font-size:11px; font-weight:bold;
+    text-shadow:0 0 4px #000; transform:translate(-50%,-100%); white-space:nowrap;
+  }
+  #spotFlash {
+    position:absolute; top:100px; left:50%; transform:translate(-50%,0); z-index:16;
+    color:var(--danger); font-size:15px; letter-spacing:2px; text-shadow:0 0 8px #000;
+    opacity:0; transition:opacity 0.3s;
+  }
+  #spotFlash.show { opacity:1; }
+
+  /* ===== ЛАМПОЧКА ЗАСВЕТА (вас обнаружили) ===== */
+  #spotBulb {
+    position:absolute; top:14px; left:50%; transform:translateX(-50%); z-index:17;
+    width:30px; height:30px; border-radius:50%; background:#2a2a1e; border:2px solid #555;
+    box-shadow: inset 0 0 6px #000;
+  }
+  #spotBulb.lit {
+    background:#ffcc33; border-color:#ffe27a;
+    box-shadow: 0 0 18px 6px rgba(255,204,51,0.85), inset 0 0 6px rgba(255,255,255,0.6);
+  }
+
+  /* ===== ИНДИКАТОР ВЕРТИКАЛЬНОГО НАВЕДЕНИЯ ===== */
+  #pitchGauge {
+    position:absolute; right:60px; top:50%; transform:translateY(-50%); width:14px; height:200px;
+    background:rgba(20,21,15,0.6); border:1px solid var(--muted); border-radius:3px; display:none;
+  }
+  #pitchGauge .track { position:absolute; left:2px; right:2px; top:2px; bottom:2px; background:rgba(255,255,255,0.05); }
+  #pitchMarker { position:absolute; left:-3px; width:20px; height:3px; background:var(--accent); }
+  #pitchZero { position:absolute; left:0; right:0; height:1px; background:rgba(255,255,255,0.35); }
+
+  /* ===== ПРИЦЕЛ НА ЦЕЛИ (nameplate) ===== */
+  #targetPlate {
+    position:absolute; top:calc(50% + 32px); left:50%; transform:translateX(-50%);
+    background:rgba(20,21,15,0.85); border:1px solid var(--accent); border-radius:4px;
+    padding:6px 12px; font-size:12px; text-align:center; display:none; z-index:16;
+  }
+  #targetPlate .tpName { color:var(--accent); font-weight:bold; }
+  #targetPlate .tpHpBar { width:120px; height:6px; background:#111; border:1px solid var(--muted); margin-top:4px; }
+  #targetPlate .tpHpFill { height:100%; background:var(--danger); }
+
+  /* ===== ПОВОРОТ УСТРОЙСТВА / АДАПТАЦИЯ ПОД ТЕЛЕФОН ===== */
+  #rotateDeviceOverlay {
+    position:absolute; inset:0; background:#0c0d09; z-index:100; display:none;
+    flex-direction:column; align-items:center; justify-content:center; text-align:center; color:var(--text);
+  }
+  #rotateDeviceOverlay .icon { font-size:52px; margin-bottom:14px; animation: rotHint 1.6s infinite ease-in-out; }
+  #rotateDeviceOverlay p { color:var(--muted); font-size:13px; max-width:260px; }
+  @keyframes rotHint { 0%,100%{ transform:rotate(0deg);} 50%{ transform:rotate(90deg);} }
+
+  body.mobile-hud #minimap { top:14px; right:14px; bottom:auto; width:110px; height:110px; }
+  body.mobile-hud #hitLog { display:none; }
+  body.mobile-hud #topBars { padding-top:6px; }
+  body.mobile-hud .teamBar { width:110px; height:10px; }
+  body.mobile-hud #timerVal { font-size:15px; min-width:44px; }
+  body.mobile-hud #selfPanel { bottom:150px; width:150px; padding:6px; }
+  body.mobile-hud #bottomCenterPanel { bottom:150px; width:170px; }
+  body.mobile-hud #reloadWrap { width:170px; }
+  body.mobile-hud #pitchGauge { right:120px; height:130px; }
+  body.mobile-hud #spotBulb { top:8px; width:22px; height:22px; }
+  body.mobile-hud #moduleRow { flex-wrap:wrap; }
+
+  @media (max-width: 900px) {
+    #hangarStats { font-size:11px; }
+    #hangarTitle { font-size:16px; }
+    .classCard { width:120px; padding:8px 10px; }
+    .classCard h3 { font-size:12px; }
+    .classCard .row { font-size:9px; }
+    #battleBtn { padding:12px 34px; font-size:14px; }
+    #minimap { width:120px; height:120px; }
+    #viewModeHint { display:none; }
+    #selfPanel { width:150px; padding:6px; }
+    #bottomCenterPanel { width:180px; }
+    #reloadWrap { width:180px; }
+  }
+
+  @media (orientation: portrait) and (max-width: 900px) {
+    #rotateDeviceOverlay { display:flex; }
+  }
+
+  /* ===== POST BATTLE ===== */
+  .statsPanelOverlay {
+    display:none; position:fixed; inset:0; background:rgba(8,9,6,0.9); z-index:200;
+    align-items:center; justify-content:center;
+  }
+  .statsPanelBox {
+    width:min(720px, 90vw); max-height:82vh; background:var(--panel); border:1px solid var(--accent);
+    border-radius:6px; display:flex; flex-direction:column; overflow:hidden;
+  }
+  .statsPanelHeader {
+    display:flex; justify-content:space-between; align-items:center; padding:14px 18px;
+    border-bottom:1px solid var(--muted); flex-shrink:0;
+  }
+  .statsPanelHeader h2 { margin:0; color:var(--accent); font-size:18px; letter-spacing:1px; }
+  .statsPanelHeader button {
+    background:none; border:1px solid var(--muted); color:var(--muted); width:28px; height:28px;
+    border-radius:3px; cursor:pointer; font-size:14px;
+  }
+  .statsPanelBody {
+    overflow-y:auto; padding:14px 18px; display:grid; grid-template-columns:1fr 1fr; gap:14px;
+  }
+  .statsSection { background:rgba(0,0,0,0.2); border-radius:4px; padding:10px 12px; }
+  .statsSectionTitle { color:var(--accent); font-size:11px; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px; }
+  .statsRow { display:flex; justify-content:space-between; font-size:12px; color:var(--text); padding:2px 0; border-bottom:1px solid rgba(255,255,255,0.05); }
+  .statsRow span:first-child { color:var(--muted); }
+  @media (max-width:700px) { .statsPanelBody { grid-template-columns:1fr; } }
+
+  #resultScreen {
+    position:absolute; inset:0; background:rgba(10,10,8,0.96); display:none;
+    flex-direction:column; align-items:center; justify-content:center; z-index:40;
+  }
+  #resultTitle { font-size:46px; letter-spacing:6px; margin-bottom:6px; }
+  #resultTitle.victory { color:var(--accent2); }
+  #resultTitle.defeat { color:var(--danger); }
+  #resultStats { display:flex; gap:40px; margin-top:24px; }
+  .statBlock { text-align:center; }
+  .statBlock .val { font-size:28px; color:var(--accent); }
+  .statBlock .lbl { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-top:4px; }
+  #backToHangarBtn {
+    margin-top:36px; padding:14px 40px; background:var(--accent2); color:#111; border:none;
+    font-size:15px; letter-spacing:2px; cursor:pointer; text-transform:uppercase; border-radius:4px;
+  }
+  #backToHangarBtn:hover { background:var(--accent); }
+
+  #startOverlay {
+    position:absolute; inset:0; background:rgba(10,10,8,0.85); display:flex; flex-direction:column;
+    align-items:center; justify-content:center; z-index:30; text-align:center; cursor:pointer;
+  }
+  #startOverlay p { color:var(--muted); font-size:13px; max-width:400px; line-height:1.7; }
+  #startOverlay .big { color:var(--accent); font-size:20px; letter-spacing:2px; margin-bottom:10px; }
+</style>
+</head>
+<body>
+
+<div id="canvasWrap"></div>
+<button id="mobileToggle">📱 МОБИЛЬНЫЙ РЕЖИМ</button>
+
+<div id="mobileControls">
+  <div id="joystickZone"><div id="joystickStick"></div></div>
+  <div id="aimZone"></div>
+  <button id="fireBtnMobile">ОГОНЬ</button>
+  <button id="sniperBtnMobile">🎯</button>
+</div>
+<div id="spotFlash">⚠ ОБНАРУЖЕН ПРОТИВНИК</div>
+<div id="captureHint" style="position:absolute; top:130px; left:50%; transform:translateX(-50%); z-index:16; font-size:15px; font-weight:bold; text-shadow:0 0 8px #000; display:none;"></div>
+<div id="rotateDeviceOverlay">
+  <div class="icon">📱</div>
+  <div style="color:var(--accent); font-size:16px; letter-spacing:2px;">ПОВЕРНИТЕ ТЕЛЕФОН</div>
+  <p>Игра рассчитана на горизонтальную ориентацию экрана</p>
+</div>
+
+<!-- ===== АНГАР ===== -->
+<div id="hangarUI">
+  <div id="hangarTop">
+    <div id="hangarTitle">⚔ АНГАР</div>
+    <div id="hangarStats">Боёв: <b id="statBattles">0</b> &nbsp; Побед: <b id="statWins">0</b> &nbsp; Опыт: <b id="statXp">0</b></div>
+  </div>
+  <div>
+    <div id="classPicker"></div>
+    <div id="equipPicker"></div>
+    <div id="mapPicker"></div>
+    <div id="modePicker"></div>
+    <div id="roomPanel">
+      <input id="roomNameInput" placeholder="Ваше имя" maxlength="16">
+      <input id="roomCodeInput" placeholder="Код комнаты" maxlength="12">
+      <button id="roomConnectBtn">Подключиться</button>
+      <span id="roomStatus"></span>
+    </div>
+    <div id="hangarBottom"><button id="battleBtn">В БОЙ</button></div>
+  </div>
+</div>
+
+<!-- ===== БОЕВОЙ HUD ===== -->
+<div id="battleHUD">
+  <div id="teamRoster"></div>
+  <div id="topBars">
+    <div class="teamBar"><div id="allyBarFill" class="teamBarFill" style="background:var(--accent2);width:100%"></div></div>
+    <div id="timerVal">10:00</div>
+    <div class="teamBar"><div id="enemyBarFill" class="teamBarFill" style="background:var(--danger);width:100%"></div></div>
+  </div>
+  <div id="spotBulb" title="Вас обнаружили"></div>
+  <div id="crosshair"></div>
+  <div id="pitchGauge"><div class="track"></div><div id="pitchZero"></div><div id="pitchMarker"></div></div>
+  <div id="targetPlate">
+    <div class="tpName" id="tpName">—</div>
+    <div class="tpDist" id="tpDist">0 м</div>
+    <div class="tpHpBar"><div class="tpHpFill" id="tpHpFill"></div></div>
+  </div>
+  <div id="spreadCircle"></div>
+  <div id="ramFlash"></div>
+
+  <div id="bottomCenterPanel">
+    <div id="ammoRow">
+      <span data-type="AP" class="active">ББ</span>
+      <span data-type="APCR">ПБ</span>
+      <span data-type="HE">ОФ</span>
+    </div>
+    <div id="reloadWrap">
+      <div id="reloadBar"><div id="reloadFill"></div></div>
+      <div id="reloadLabel"><span id="reloadStateText">ЗАРЯЖЕНО</span></div>
+    </div>
+  </div>
+
+  <div id="selfPanel">
+    <div id="selfNameRow">
+      <span id="selfName">—</span>
+      <span id="selfHpText">100/100</span>
+    </div>
+    <div id="selfHpBar"><div id="selfHpFill"></div></div>
+    <div id="moduleRow">
+      <div class="moduleIcon" id="modTracks" title="Гусеницы">
+        <svg viewBox="0 0 24 24" width="14" height="14"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="currentColor"/><path d="M12 4v3M12 17v3M4 12h3M17 12h3" stroke="currentColor" stroke-width="2"/></svg>
+      </div>
+      <div class="moduleIcon" id="modEngine" title="Двигатель">
+        <svg viewBox="0 0 24 24" width="14" height="14"><rect x="4" y="8" width="12" height="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 11h4v3h-4M7 8V5h6v3" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+      </div>
+      <div class="moduleIcon" id="modGun" title="Орудие">
+        <svg viewBox="0 0 24 24" width="14" height="14"><path d="M3 12h13l4-3v6l-4-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><rect x="3" y="10" width="6" height="4" fill="currentColor"/></svg>
+      </div>
+      <button id="repairBtn" title="Ремкомплект (R)">🛠 <span id="repairCount">2</span></button>
+    </div>
+  </div>
+
+  <canvas id="minimap" width="220" height="220"></canvas>
+  <div id="hitLog"></div>
+  <div id="viewModeHint">Shift — прицел &nbsp;|&nbsp; мышь вверх/вниз — угол наведения &nbsp;|&nbsp; ЛКМ — огонь &nbsp;|&nbsp; R — ремкомплект &nbsp;|&nbsp; 1/2/3 — снаряд</div>
+  <button id="exitTrainingBtn" style="display:none; position:absolute; top:14px; left:50%; transform:translateX(-50%); z-index:20; padding:6px 16px; font-size:11px; background:rgba(34,36,27,0.9); color:var(--accent); border:1px solid var(--accent); border-radius:3px; cursor:pointer; pointer-events:auto;">ЗАВЕРШИТЬ ТРЕНИРОВКУ</button>
+  <div id="spotLabels" style="position:absolute; inset:0;"></div>
+  <div id="artyAimMarkerHint" style="display:none;">РЕЖИМ АРТИЛЛЕРИИ: наведите точку падения и стреляйте</div>
+</div>
+
+<!-- ===== СТАРТОВЫЙ ЭКРАН БОЯ (клик для pointer lock) ===== -->
+<div id="startOverlay">
+  <div class="big">НАЖМИТЕ, ЧТОБЫ НАЧАТЬ БОЙ</div>
+  <p>Мышь управляет наведением башни по горизонтали и вертикали (после клика курсор захватывается). WASD — движение корпуса.
+     Целься в борт и корму противника — там броня тоньше, под острым углом снаряд рикошетит даже от лобовой брони.
+     Загорелась лампочка вверху экрана — вас обнаружил противник. R — использовать ремкомплект.</p>
+</div>
+
+<!-- ===== ПОСЛЕБОЕВАЯ СТАТИСТИКА ===== -->
+<div id="resultScreen">
+  <div id="resultTitle">ПОБЕДА</div>
+  <div id="resultStats">
+    <div class="statBlock"><div class="val" id="rsKills">0</div><div class="lbl">Уничтожено</div></div>
+    <div class="statBlock"><div class="val" id="rsDamage">0</div><div class="lbl">Урон нанесён</div></div>
+    <div class="statBlock"><div class="val" id="rsXp">0</div><div class="lbl">Опыт получен</div></div>
+  </div>
+  <button id="backToHangarBtn">В АНГАР</button>
+</div>
+
+<script>
+'use strict';
+
+/* ======================================================================
+   КОНФИГУРАЦИЯ КЛАССОВ ТЕХНИКИ
+   ====================================================================== */
+
+const VEHICLE_CLASSES = {
+  light: {
+    name: 'Лёгкий танк', color: 0x8a9a5b,
+    hp: 70, speed: 10.5, turnSpeed: 2.8, turretTurnSpeed: 3.6,
+    armor: { front: 30, side: 16, rear: 10 },
+    gunDamage: 24, gunPen: 60, reload: 1.9, ricochetAngle: 68,
+    mass: 1.0, ramDamageFactor: 0.7, viewRange: 62, pitchMax: 0.32, pitchMin: -0.16,
+    spreadMax: 0.085, spreadMin: 0.018, spreadGrowRate: 0.09, spreadShrinkRate: 0.05,
+    scale: { hullLen: 4.0, hullWide: 2.0, hullH: 1.0, turretR: 0.9 }
+  },
+  medium: {
+    name: 'Средний танк', color: 0x7a8f4a,
+    hp: 105, speed: 8.0, turnSpeed: 2.2, turretTurnSpeed: 2.9,
+    armor: { front: 65, side: 32, rear: 22 },
+    gunDamage: 42, gunPen: 95, reload: 2.9, ricochetAngle: 70,
+    mass: 1.5, ramDamageFactor: 1.0, viewRange: 52, pitchMax: 0.36, pitchMin: -0.12,
+    spreadMax: 0.07, spreadMin: 0.012, spreadGrowRate: 0.07, spreadShrinkRate: 0.045,
+    scale: { hullLen: 4.6, hullWide: 2.3, hullH: 1.15, turretR: 1.05 }
+  },
+  heavy: {
+    name: 'Тяжёлый танк', color: 0x5f6b3c,
+    hp: 165, speed: 5.2, turnSpeed: 1.5, turretTurnSpeed: 2.1,
+    armor: { front: 130, side: 65, rear: 40 },
+    gunDamage: 62, gunPen: 150, reload: 4.4, ricochetAngle: 72,
+    mass: 2.3, ramDamageFactor: 1.5, viewRange: 42, pitchMax: 0.26, pitchMin: -0.08,
+    spreadMax: 0.06, spreadMin: 0.010, spreadGrowRate: 0.06, spreadShrinkRate: 0.04,
+    scale: { hullLen: 5.2, hullWide: 2.6, hullH: 1.35, turretR: 1.25 }
+  },
+  td: {
+    name: 'ПТ-САУ', color: 0x54502f,
+    hp: 130, speed: 6.5, turnSpeed: 1.7, turretTurnSpeed: 1.6, // низкобашенная/безбашенная - башня поворачивается медленно
+    armor: { front: 150, side: 45, rear: 25 },
+    gunDamage: 90, gunPen: 175, reload: 6.5, ricochetAngle: 74,
+    mass: 1.9, ramDamageFactor: 1.1, viewRange: 48, pitchMax: 0.20, pitchMin: -0.10,
+    spreadMax: 0.05, spreadMin: 0.008, spreadGrowRate: 0.05, spreadShrinkRate: 0.05,
+    scale: { hullLen: 5.6, hullWide: 2.4, hullH: 0.95, turretR: 0.8 },
+    isTD: true // низкий силуэт, огромный урон за выстрел, слабая башня
+  },
+  arty: {
+    name: 'САУ', color: 0x707a55,
+    hp: 60, speed: 4.8, turnSpeed: 1.3, turretTurnSpeed: 1.1,
+    armor: { front: 20, side: 12, rear: 8 },
+    gunDamage: 110, gunPen: 120, reload: 9.0, ricochetAngle: 85, // ОФ снаряды почти не рикошетят
+    mass: 1.3, ramDamageFactor: 0.5, viewRange: 38,
+    pitchMax: 0.95, pitchMin: -0.05, // огромный угол возвышения - стрельба навесом, "фишка" арты
+    spreadMax: 0.16, spreadMin: 0.05, spreadGrowRate: 0.05, spreadShrinkRate: 0.02,
+    scale: { hullLen: 4.8, hullWide: 2.5, hullH: 1.05, turretR: 0.7 },
+    isArty: true // огромный урон, стрельба навесом по дуге, очень долгая перезарядка и слабая броня
+  },
+  rocket_arty: {
+    name: 'РСЗО', color: 0x655f3a,
+    hp: 75, speed: 6.2, turnSpeed: 1.6, turretTurnSpeed: 1.4,
+    armor: { front: 24, side: 14, rear: 10 },
+    gunDamage: 30, gunPen: 90, reload: 6.0, ricochetAngle: 82, // урон и пробитие ниже - за счёт залпа из нескольких ракет
+    mass: 1.2, ramDamageFactor: 0.5, viewRange: 40,
+    pitchMax: 0.5, pitchMin: 0.0,
+    spreadMax: 0.13, spreadMin: 0.04, spreadGrowRate: 0.06, spreadShrinkRate: 0.03,
+    scale: { hullLen: 4.6, hullWide: 2.4, hullH: 1.1, turretR: 0.75 },
+    isRocketArty: true // стреляет залпом из 4 ракет одновременно вместо одного снаряда
+  }
+};
+
+/* ======================================================================
+   РАСШИРЕННЫЕ ХАРАКТЕРИСТИКИ - вычисляются производно от базовых полей,
+   чтобы не дублировать 20+ параметров вручную на каждый класс.
+   Часть полей активно используется в геймплее (accel, terrainResistance,
+   camouflage, fireChance, moduleHp), часть - вспомогательные/экономические
+   данные для будущей интеграции (цена, ремонт, кредиты, опыт).
+   ====================================================================== */
+
+function deriveExtendedStats(def, key) {
+  def.hullHp = def.hp;
+  def.turretArmor = Math.round(def.armor.front * 1.05);
+
+  def.moduleHp = {
+    tracks: Math.round(def.hp * 0.35),
+    engine: Math.round(def.hp * 0.30),
+    fuel: Math.round(def.hp * 0.25),
+    ammoRack: Math.round(def.hp * 0.28)
+  };
+
+  def.fireChance = (key === 'heavy' || key === 'td') ? 0.16 : (key === 'arty' || key === 'rocket_arty') ? 0.12 : 0.10;
+
+  def.camouflage = key === 'light' ? 0.30 : key === 'td' ? 0.24 : key === 'medium' ? 0.18
+                  : key === 'heavy' ? 0.11 : 0.15;
+  def.camouflageMoveMult = 0.55;
+  def.camouflageFireMult = 0.35;
+
+  def.power = Math.round(def.mass * (key === 'light' ? 420 : key === 'heavy' ? 520 : key === 'td' ? 480 : 400));
+  def.powerToWeight = +(def.power / (def.mass * 14)).toFixed(1);
+  def.accel = +(def.speed / (key === 'heavy' || key === 'td' ? 5.2 : key === 'light' ? 2.0 : 3.0)).toFixed(2);
+  def.decel = +(def.accel * 1.6).toFixed(2);
+  def.reverseSpeedMult = 0.42;
+
+  def.terrainResistance = {
+    hard: 1.0,
+    medium: (key === 'heavy' || key === 'td') ? 1.22 : 1.10,
+    soft: (key === 'heavy' || key === 'td') ? 1.55 : 1.28
+  };
+
+  def.repairTimeTrack = key === 'heavy' ? 12 : key === 'td' ? 10 : 8;
+
+  def.priceCredits = Math.round(def.hp*180 + def.gunPen*90);
+  def.repairCostCredits = Math.round(def.priceCredits*0.045);
+  def.creditsPerDamage = 2.1;
+  def.xpPerDamage = 0.5;
+
+  def.aimTime = +(def.spreadMin * 22).toFixed(1);
+  def.roundsPerMinute = +(60/def.reload).toFixed(1);
+  def.dpm = Math.round(def.gunDamage * def.roundsPerMinute);
+}
+
+Object.keys(VEHICLE_CLASSES).forEach(k => deriveExtendedStats(VEHICLE_CLASSES[k], k));
+
+/* ======================================================================
+   РОСТЕР ТЕХНИКИ - генерируем 5 "уровней" для каждого из 6 базовых классов
+   (итого 30 машин), масштабируя характеристики базового класса.
+   Модель и текстура переиспользуются от базового класса (тонировка по уровню),
+   чтобы не плодить уникальные 3D-модели на каждую единицу техники.
+   ====================================================================== */
+
+const TIERS = [
+  { roman: 'I',   mult: 0.72 },
+  { roman: 'II',  mult: 0.86 },
+  { roman: 'III', mult: 1.00 },
+  { roman: 'IV',  mult: 1.16 },
+  { roman: 'V',   mult: 1.32 }
+];
+
+const CLASS_NAME_SETS = {
+  light:        ['Скаут', 'Гончая', 'Рысь', 'Стрела', 'Вихрь'],
+  medium:       ['Страж', 'Сокол', 'Комета', 'Авангард', 'Феникс'],
+  heavy:        ['Бастион', 'Титан', 'Голиаф', 'Крепость', 'Левиафан'],
+  td:           ['Охотник', 'Гарпун', 'Кобра', 'Скорпион', 'Рейд'],
+  arty:         ['Гроза', 'Шторм', 'Молния', 'Ураган', 'Гром'],
+  rocket_arty:  ['Залп', 'Шквал', 'Смерч', 'Каскад', 'Вулкан']
+};
+
+const BASE_CLASS_KEYS = ['light', 'medium', 'heavy', 'td', 'arty', 'rocket_arty'];
+const ROSTER = [];
+
+BASE_CLASS_KEYS.forEach(baseKey => {
+  const base = VEHICLE_CLASSES[baseKey];
+  TIERS.forEach((tier, tierIdx) => {
+    const id = `${baseKey}_${tierIdx}`;
+    const scaled = {
+      ...base,
+      name: `${CLASS_NAME_SETS[baseKey][tierIdx]} ${tier.roman}`,
+      hp: Math.round(base.hp * tier.mult),
+      armor: {
+        front: Math.round(base.armor.front * tier.mult),
+        side: Math.round(base.armor.side * tier.mult),
+        rear: Math.round(base.armor.rear * tier.mult)
+      },
+      gunDamage: Math.round(base.gunDamage * tier.mult),
+      gunPen: Math.round(base.gunPen * (0.85 + tier.mult*0.2)),
+      viewRange: Math.round(base.viewRange * (0.9 + tier.mult*0.12)),
+      mass: base.mass * (0.9 + tier.mult*0.12),
+      // тонируем цвет по уровню, чтобы машины визуально отличались друг от друга в пределах класса
+      color: shadeColor(base.color, (tierIdx-2) * 10)
+    };
+    deriveExtendedStats(scaled, baseKey);
+    VEHICLE_CLASSES[id] = scaled;
+    ROSTER.push({ id, baseKey, tierIdx, tierRoman: tier.roman, name: scaled.name });
+  });
+});
+
+function shadeColor(hex, amt) {
+  const r = clamp(((hex>>16)&255) + amt, 0, 255);
+  const g = clamp(((hex>>8)&255) + amt, 0, 255);
+  const b = clamp((hex&255) + amt, 0, 255);
+  return (r<<16) | (g<<8) | b;
+}
+
+let selectedClass = 'medium_2';
+
+/* ======================================================================
+   ОБОРУДОВАНИЕ - 3 слота, в каждом слоте можно выбрать максимум один предмет.
+   Эффект применяется как множитель к соответствующему полю итогового def
+   при создании боевого танка (см. applyEquipment).
+   ====================================================================== */
+
+const EQUIPMENT_CATALOG = {
+  slot1: [
+    { id: 'rammer',   name: 'Досылатель',      desc: '-10% к времени перезарядки', apply: d => { d.reload *= 0.90; } },
+    { id: 'vents',    name: 'Вентиляция',      desc: '+5% ко всем характеристикам экипажа (упрощённо: урон/обзор)', apply: d => { d.gunDamage = Math.round(d.gunDamage*1.05); d.viewRange = Math.round(d.viewRange*1.03); } },
+    { id: 'turbo',    name: 'Турбонагнетатель', desc: '+12% к мощности двигателя (разгон/скорость)', apply: d => { d.accel *= 1.12; d.speed *= 1.06; } },
+  ],
+  slot2: [
+    { id: 'optics',   name: 'Улучшенная оптика', desc: '+10% к обзору', apply: d => { d.viewRange = Math.round(d.viewRange*1.10); } },
+    { id: 'stabilizer', name: 'Стабилизатор',   desc: '-15% к разбросу в движении', apply: d => { d.spreadMax *= 0.85; } },
+    { id: 'netting',  name: 'Маскировочная сеть', desc: '+8% к маскировке в неподвижном состоянии', apply: d => { d.camouflage = Math.min(0.6, d.camouflage*1.08); } },
+  ],
+  slot3: [
+    { id: 'spall',    name: 'Противоосколочный подбой', desc: '-15% к вероятности повреждения модулей/пожара', apply: d => { d.fireChance *= 0.85; } },
+    { id: 'springs',  name: 'Улучшенные амортизаторы', desc: '+10% к скорости поворота корпуса', apply: d => { d.turnSpeed *= 1.10; } },
+    { id: 'coating',  name: 'Спец. покрытие', desc: '+10% к маскировке в движении', apply: d => { d.camouflageMoveMult = Math.min(1, d.camouflageMoveMult*1.10); } },
+  ]
+};
+
+let equippedItems = { slot1: 'rammer', slot2: 'optics', slot3: 'spall' };
+
+function applyEquipment(def) {
+  const out = JSON.parse(JSON.stringify(def)); // не портим оригинальный класс - работаем с копией
+  Object.keys(equippedItems).forEach(slot => {
+    const itemId = equippedItems[slot];
+    if (!itemId) return;
+    const item = (EQUIPMENT_CATALOG[slot]||[]).find(i => i.id === itemId);
+    if (item) item.apply(out);
+  });
+  return out;
+}
+const playerProgress = { battles: 0, wins: 0, xp: 0 };
+
+/* ======================================================================
+   THREE.JS БАЗА
+   ====================================================================== */
+
+const wrap = document.getElementById('canvasWrap');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+wrap.appendChild(renderer.domElement);
+
+window.addEventListener('resize', () => {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  if (activeCamera) { activeCamera.aspect = window.innerWidth / window.innerHeight; activeCamera.updateProjectionMatrix(); }
+});
+
+let activeCamera = null;
+let currentMode = 'hangar'; // 'hangar' | 'battle'
+
+/* ======================================================================
+   СОЗДАНИЕ 3D-МОДЕЛИ ТАНКА (простая, но с корпусом+башней+стволом)
+   ====================================================================== */
+
+/* ======================================================================
+   ПРОЦЕДУРНЫЕ ТЕКСТУРЫ ТЕХНИКИ - camo-паттерн для корпуса/башни и
+   металл с потёртостями для гусениц, вместо плоской заливки цветом.
+   Кэшируются по классу, чтобы не пересоздавать канвас на каждый заспавненный танк.
+   ====================================================================== */
+
+const textureCache = {};
+
+function hexToRgb(hex) { return { r:(hex>>16)&255, g:(hex>>8)&255, b:hex&255 }; }
+function shade(rgb, amt) {
+  return `rgb(${clamp(rgb.r+amt,0,255)},${clamp(rgb.g+amt,0,255)},${clamp(rgb.b+amt,0,255)})`;
+}
+
+function buildCamoTexture(baseColorHex, key) {
+  if (textureCache[key]) return textureCache[key];
+  const size = 512;
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  const cx = c.getContext('2d');
+  const base = hexToRgb(baseColorHex);
+
+  cx.fillStyle = shade(base, 0); cx.fillRect(0,0,size,size);
+
+  // разводы камуфляжа - органические пятна двух дополнительных тонов
+  const tones = [shade(base, -28), shade(base, 22), shade(base, -50)];
+  for (let i=0;i<38;i++){
+    cx.fillStyle = tones[i % tones.length];
+    cx.globalAlpha = 0.55 + Math.random()*0.3;
+    const x = Math.random()*size, y = Math.random()*size;
+    const r = 30 + Math.random()*90;
+    cx.beginPath();
+    cx.moveTo(x, y);
+    const pts = 6 + Math.floor(Math.random()*3);
+    for (let p=0;p<=pts;p++){
+      const ang = (p/pts)*Math.PI*2;
+      const rr = r*(0.6+Math.random()*0.5);
+      cx.lineTo(x+Math.cos(ang)*rr, y+Math.sin(ang)*rr);
+    }
+    cx.closePath(); cx.fill();
+  }
+  cx.globalAlpha = 1;
+
+  // царапины/потёртости металла поверх камуфляжа
+  cx.strokeStyle = 'rgba(0,0,0,0.12)'; cx.lineWidth = 1;
+  for (let i=0;i<120;i++){
+    const x=Math.random()*size, y=Math.random()*size, len=4+Math.random()*14, ang=Math.random()*Math.PI;
+    cx.beginPath(); cx.moveTo(x,y); cx.lineTo(x+Math.cos(ang)*len, y+Math.sin(ang)*len); cx.stroke();
+  }
+
+  // лёгкий шум, чтобы убрать "пластиковый" вид плоской текстуры
+  const img = cx.getImageData(0,0,size,size);
+  for (let i=0;i<img.data.length;i+=4){
+    const n=(Math.random()-0.5)*10;
+    img.data[i]=clamp(img.data[i]+n,0,255); img.data[i+1]=clamp(img.data[i+1]+n,0,255); img.data[i+2]=clamp(img.data[i+2]+n,0,255);
+  }
+  cx.putImageData(img,0,0);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1.4, 1.4);
+  textureCache[key] = tex;
+  return tex;
+}
+
+function buildTrackTexture() {
+  if (textureCache['track']) return textureCache['track'];
+  const w = 256, h = 64;
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const cx = c.getContext('2d');
+  cx.fillStyle = '#1c1a16'; cx.fillRect(0,0,w,h);
+  // траки гусеницы - повторяющиеся сегменты с болтами
+  for (let x=0; x<w; x+=18) {
+    cx.fillStyle = '#28251f';
+    cx.fillRect(x, 4, 14, h-8);
+    cx.fillStyle = '#3a352b';
+    cx.fillRect(x, 4, 14, 3);
+    cx.fillStyle = '#0e0d0b';
+    cx.beginPath(); cx.arc(x+7, h/2, 2.4, 0, Math.PI*2); cx.fill();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(4, 1);
+  textureCache['track'] = tex;
+  return tex;
+}
+
+function buildTankMesh(classDef) {
+  const group = new THREE.Group();
+  const s = classDef.scale;
+
+  const camoTex = buildCamoTexture(classDef.color, 'camo_' + classDef.name);
+  const trackTex = buildTrackTexture();
+
+  const hullMat = new THREE.MeshStandardMaterial({ map: camoTex, roughness: 0.85, metalness: 0.25 });
+  const trackMat = new THREE.MeshStandardMaterial({ map: trackTex, roughness: 0.9, metalness: 0.4 });
+  const turretMat = new THREE.MeshStandardMaterial({ map: camoTex, roughness: 0.75, metalness: 0.3 });
+  const metalDarkMat = new THREE.MeshStandardMaterial({ color: 0x1c1a16, roughness: 0.6, metalness: 0.6 });
+
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(s.hullLen, s.hullH, s.hullWide), hullMat);
+  hull.position.y = s.hullH / 2 + 0.35;
+  hull.castShadow = true; hull.receiveShadow = true;
+  group.add(hull);
+
+  // передний скошенный верхний лобовой лист (визуально отделяет "лоб" от "крыши" корпуса)
+  const glacis = new THREE.Mesh(new THREE.BoxGeometry(s.hullLen*0.32, s.hullH*0.85, s.hullWide*0.96), hullMat);
+  glacis.position.set(s.hullLen*0.42, s.hullH/2 + 0.35, 0);
+  glacis.rotation.z = -0.5;
+  glacis.castShadow = true;
+  group.add(glacis);
+
+  [-1, 1].forEach(side => {
+    const track = new THREE.Mesh(new THREE.BoxGeometry(s.hullLen + 0.3, 0.7, 0.45), trackMat);
+    track.position.set(0, 0.35, side * (s.hullWide/2 + 0.2));
+    track.castShadow = true;
+    group.add(track);
+    // катки на гусенице - мелкая деталь, добавляет узнаваемости силуэта
+    const wheelCount = Math.round(s.hullLen * 1.3);
+    for (let i=0;i<wheelCount;i++){
+      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.32,0.5,10), metalDarkMat);
+      wheel.rotation.x = Math.PI/2;
+      wheel.position.set(-s.hullLen/2 + 0.4 + i*((s.hullLen-0.8)/(wheelCount-1)), 0.32, side * (s.hullWide/2 + 0.24));
+      wheel.castShadow = true;
+      group.add(wheel);
+    }
+  });
+
+  const turretGroup = new THREE.Group();
+  turretGroup.position.set(classDef.isTD ? -s.hullLen*0.08 : 0, s.hullH + 0.35, 0);
+  const turretGeo = classDef.isTD
+    ? new THREE.BoxGeometry(s.turretR*2.1, 0.65, s.hullWide*0.9)   // ПТ - низкая скошенная рубка вместо башни
+    : new THREE.CylinderGeometry(s.turretR, s.turretR * 1.1, 0.8, 12);
+  const turret = new THREE.Mesh(turretGeo, turretMat);
+  turret.castShadow = true;
+  turretGroup.add(turret);
+
+  // командирская башенка / люк - мелкая деталь поверх башни для визуального разнообразия
+  if (!classDef.isTD) {
+    const hatch = new THREE.Mesh(new THREE.CylinderGeometry(s.turretR*0.28, s.turretR*0.28, 0.22, 10), metalDarkMat);
+    hatch.position.set(-s.turretR*0.3, 0.5, s.turretR*0.35);
+    hatch.castShadow = true;
+    turretGroup.add(hatch);
+  }
+
+  // отдельная группа наклона ствола (вертикальное наведение), независимая от горизонтального поворота башни
+  const gunPitchGroup = new THREE.Group();
+  turretGroup.add(gunPitchGroup);
+
+  const barrelLen = classDef.isArty ? s.hullLen*0.7 : s.hullLen * 0.95;
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(classDef.isArty?0.13:0.09, classDef.isArty?0.16:0.11, barrelLen, 8), metalDarkMat);
+  barrel.rotation.z = Math.PI / 2;
+  barrel.position.set(barrelLen/2, 0, 0);
+  barrel.castShadow = true;
+  gunPitchGroup.add(barrel);
+
+  // дульный тормоз - утолщение на конце ствола
+  const muzzleBrake = new THREE.Mesh(new THREE.CylinderGeometry(0.14,0.14,0.3,8), metalDarkMat);
+  muzzleBrake.rotation.z = Math.PI/2;
+  muzzleBrake.position.set(barrelLen, 0, 0);
+  gunPitchGroup.add(muzzleBrake);
+
+  group.add(turretGroup);
+
+  return { group, turretGroup, gunPitchGroup, hullMesh: hull, glacisMesh: glacis, turretMesh: turret, muzzleOffset: barrelLen + 0.3, turretHeight: s.hullH + 0.35 };
+}
+
+/* ======================================================================
+   АНГАР: сцена, выбор класса
+   ====================================================================== */
+
+let hangarScene, hangarCamera, hangarTankObj, hangarClock;
+
+function initHangar() {
+  hangarScene = new THREE.Scene();
+  hangarScene.background = new THREE.Color(0x1c1d16);
+  hangarScene.fog = new THREE.Fog(0x1c1d16, 12, 30);
+
+  hangarCamera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 100);
+  hangarCamera.position.set(6, 3.2, 6);
+  hangarCamera.lookAt(0, 1, 0);
+
+  const floor = new THREE.Mesh(
+    new THREE.CircleGeometry(10, 32),
+    new THREE.MeshStandardMaterial({ color: 0x2a2b22, roughness: 0.9 })
+  );
+  floor.rotation.x = -Math.PI/2;
+  floor.receiveShadow = true;
+  hangarScene.add(floor);
+
+  const key = new THREE.DirectionalLight(0xfff2d0, 1.1);
+  key.position.set(5, 8, 4);
+  key.castShadow = true;
+  key.shadow.mapSize.set(1024, 1024);
+  hangarScene.add(key);
+  hangarScene.add(new THREE.AmbientLight(0x8899aa, 0.55));
+  const rim = new THREE.PointLight(0x6688ff, 0.4, 20);
+  rim.position.set(-6, 3, -4);
+  hangarScene.add(rim);
+
+  refreshHangarTank();
+  hangarClock = new THREE.Clock();
+  buildClassPicker();
+  buildEquipPicker();
+  buildMapPicker();
+  buildModePicker();
+}
+
+function refreshHangarTank() {
+  if (hangarTankObj) hangarScene.remove(hangarTankObj.group);
+  const def = VEHICLE_CLASSES[selectedClass];
+  hangarTankObj = buildTankMesh(def);
+  hangarScene.add(hangarTankObj.group);
+}
+
+const CLASS_TAB_LABELS = {
+  light: 'Лёгкие', medium: 'Средние', heavy: 'Тяжёлые',
+  td: 'ПТ-САУ', arty: 'САУ', rocket_arty: 'РСЗО'
+};
+let selectedTab = 'medium';
+
+function buildClassPicker() {
+  const picker = document.getElementById('classPicker');
+  picker.innerHTML = '';
+
+  const tabBar = document.createElement('div');
+  tabBar.style.cssText = 'display:flex; gap:6px; justify-content:center; margin-bottom:10px; width:100%;';
+  BASE_CLASS_KEYS.forEach(key => {
+    const tab = document.createElement('button');
+    tab.textContent = CLASS_TAB_LABELS[key];
+    tab.style.cssText = `padding:6px 14px; font-size:11px; letter-spacing:1px; cursor:pointer; border-radius:3px;
+      background:${key===selectedTab?'var(--accent2)':'rgba(34,36,27,0.9)'}; color:${key===selectedTab?'#111':'var(--muted)'};
+      border:1px solid ${key===selectedTab?'var(--accent2)':'var(--muted)'};`;
+    tab.addEventListener('click', () => { selectedTab = key; buildClassPicker(); });
+    tabBar.appendChild(tab);
+  });
+  picker.appendChild(tabBar);
+
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex; gap:10px; justify-content:center; flex-wrap:wrap; width:100%;';
+  ROSTER.filter(r => r.baseKey === selectedTab).forEach(entry => {
+    const def = VEHICLE_CLASSES[entry.id];
+    const card = document.createElement('div');
+    card.className = 'classCard' + (entry.id === selectedClass ? ' selected' : '');
+    card.innerHTML = `
+      <h3>${def.name}</h3>
+      <div class="row"><span>Прочность</span><span>${def.hp}</span></div>
+      <div class="row"><span>Броня Л/Б/К</span><span>${def.armor.front}/${def.armor.side}/${def.armor.rear}</span></div>
+      <div class="row"><span>Урон</span><span>${def.gunDamage}</span></div>
+      <div class="row"><span>Пробитие</span><span>${def.gunPen}</span></div>
+      <div class="row"><span>Скорость</span><span>${def.speed.toFixed(1)}</span></div>
+    `;
+    card.addEventListener('click', () => {
+      selectedClass = entry.id;
+      refreshHangarTank();
+      buildClassPicker();
+    });
+    row.appendChild(card);
+  });
+  picker.appendChild(row);
+
+  const detailsBtn = document.createElement('button');
+  detailsBtn.textContent = 'ПОДРОБНЫЕ ТТХ ▾';
+  detailsBtn.style.cssText = 'display:block; margin:10px auto 0; padding:6px 16px; font-size:11px; letter-spacing:1px; background:rgba(34,36,27,0.9); color:var(--accent); border:1px solid var(--accent); border-radius:3px; cursor:pointer;';
+  detailsBtn.addEventListener('click', () => openStatsPanel(selectedClass));
+  picker.appendChild(detailsBtn);
+}
+
+/* ======================================================================
+   ПОЛНАЯ ПАНЕЛЬ ХАРАКТЕРИСТИК - разворачивает все посчитанные в
+   deriveExtendedStats() параметры техники в читаемом виде.
+   ====================================================================== */
+
+function statsPanelHTML(def) {
+  const sec = (title, rows) => `
+    <div class="statsSection">
+      <div class="statsSectionTitle">${title}</div>
+      ${rows.map(([label, val]) => `<div class="statsRow"><span>${label}</span><span>${val}</span></div>`).join('')}
+    </div>`;
+
+  return `
+    ${sec('Общие', [
+      ['Прочность', def.hp],
+      ['Броня корпуса (Л/Б/К), мм', `${def.armor.front} / ${def.armor.side} / ${def.armor.rear}`],
+      ['Броня башни, мм', def.turretArmor],
+      ['Масса, т', def.mass.toFixed(1)],
+      ['Прочность ходовой', def.moduleHp.tracks],
+      ['Прочность двигателя', def.moduleHp.engine],
+      ['Прочность баков', def.moduleHp.fuel],
+      ['Прочность боеукладки', def.moduleHp.ammoRack],
+      ['Вероятность пожара', (def.fireChance*100).toFixed(0) + '%'],
+    ])}
+    ${sec('Экономика', [
+      ['Цена, кредиты', def.priceCredits],
+      ['Стоимость ремонта', def.repairCostCredits],
+      ['Кредитов за 1 урона', def.creditsPerDamage],
+      ['Опыта за 1 урона', def.xpPerDamage],
+    ])}
+    ${sec('Вооружение', [
+      ['Выстрелов в минуту', def.roundsPerMinute],
+      ['Время перезарядки, с', def.reload.toFixed(1)],
+      ['Время сведения, с', def.aimTime],
+      ['Разброс (мин/макс), рад', `${def.spreadMin.toFixed(3)} / ${def.spreadMax.toFixed(3)}`],
+      ['Урон в минуту (DPM)', def.dpm],
+      ['Пробитие (база), мм', def.gunPen],
+      ['Урон по танку', def.gunDamage],
+      ['Угол склонения/возвышения, °', `${(def.pitchMin*180/Math.PI).toFixed(0)} / ${(def.pitchMax*180/Math.PI).toFixed(0)}`],
+    ])}
+    ${sec('Снаряды', Object.entries(SHELL_PROFILES).map(([key, p]) => [
+      p.label, `пробитие ×${p.penMult}, урон ×${p.dmgMult}, скорость ×${p.speedMult}`
+    ]))}
+    ${sec('Маскировка и обзор', [
+      ['Маскировка (база)', (def.camouflage*100).toFixed(0) + '%'],
+      ['Множитель в движении', def.camouflageMoveMult],
+      ['Множитель при выстреле', def.camouflageFireMult],
+      ['Обзор, м', def.viewRange],
+    ])}
+    ${sec('Подвижность', [
+      ['Скорость вперёд, м/с', def.speed.toFixed(1)],
+      ['Скорость назад, м/с', (def.speed*def.reverseSpeedMult).toFixed(1)],
+      ['Разгон, м/с²', def.accel],
+      ['Торможение, м/с²', def.decel],
+      ['Мощность, л.с.', def.power],
+      ['Мощность/т, л.с./т', def.powerToWeight],
+      ['Поворот корпуса, °/с', (def.turnSpeed*180/Math.PI).toFixed(0)],
+      ['Поворот башни, °/с', (def.turretTurnSpeed*180/Math.PI).toFixed(0)],
+      ['Время ремонта гусениц, с', def.repairTimeTrack],
+    ])}
+    ${sec('Сопротивление грунта (множитель времени разгона)', [
+      ['Твёрдый', def.terrainResistance.hard.toFixed(2)],
+      ['Средний', def.terrainResistance.medium.toFixed(2)],
+      ['Мягкий', def.terrainResistance.soft.toFixed(2)],
+    ])}
+    ${sec('Прочее', [
+      ['Потенциал тарана', (def.mass*def.ramDamageFactor).toFixed(1)],
+      ['Ricochet угол, °', def.ricochetAngle],
+    ])}
+  `;
+}
+
+function openStatsPanel(classId) {
+  const def = VEHICLE_CLASSES[classId];
+  let overlay = document.getElementById('statsPanelOverlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'statsPanelOverlay';
+    overlay.className = 'statsPanelOverlay';
+    document.body.appendChild(overlay);
+  }
+  overlay.innerHTML = `
+    <div class="statsPanelBox">
+      <div class="statsPanelHeader">
+        <h2>${def.name}</h2>
+        <button id="statsPanelClose">✕</button>
+      </div>
+      <div class="statsPanelBody">${statsPanelHTML(def)}</div>
+    </div>
+  `;
+  overlay.style.display = 'flex';
+  document.getElementById('statsPanelClose').addEventListener('click', () => { overlay.style.display = 'none'; });
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.style.display = 'none'; });
+}
+
+function buildEquipPicker() {
+  const el = document.getElementById('equipPicker');
+  el.innerHTML = '';
+  Object.entries(EQUIPMENT_CATALOG).forEach(([slot, items]) => {
+    const slotDiv = document.createElement('div');
+    slotDiv.className = 'equipSlot';
+    const label = document.createElement('div');
+    label.className = 'equipSlotLabel';
+    label.textContent = `Слот ${slot.slice(-1)}`;
+    slotDiv.appendChild(label);
+    const opts = document.createElement('div');
+    opts.className = 'equipOptions';
+    items.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'equipItem' + (equippedItems[slot] === item.id ? ' active' : '');
+      div.innerHTML = `<b>${item.name}</b>${item.desc}`;
+      div.addEventListener('click', () => {
+        equippedItems[slot] = (equippedItems[slot] === item.id) ? null : item.id; // повторный клик снимает предмет
+        buildEquipPicker();
+      });
+      opts.appendChild(div);
+    });
+    slotDiv.appendChild(opts);
+    el.appendChild(slotDiv);
+  });
+}
+
+function buildMapPicker() {
+  const el = document.getElementById('mapPicker');
+  el.innerHTML = '<div style="text-align:center; font-size:11px; color:var(--muted); margin-bottom:6px; letter-spacing:1px;">КАРТА</div>';
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex; gap:8px; justify-content:center; flex-wrap:wrap;';
+  Object.entries(MAP_DEFS).forEach(([key, map]) => {
+    const btn = document.createElement('button');
+    btn.textContent = map.name;
+    btn.className = 'modeBtn' + (key === selectedMap ? ' active' : '');
+    btn.addEventListener('click', () => { selectedMap = key; buildMapPicker(); });
+    row.appendChild(btn);
+  });
+  el.appendChild(row);
+}
+
+function buildModePicker() {
+  const el = document.getElementById('modePicker');
+  el.innerHTML = '';
+  const offBtn = document.createElement('button');
+  offBtn.textContent = 'ОФФЛАЙН (против ботов)';
+  offBtn.className = 'modeBtn' + (!onlineMode && !trainingMode ? ' active' : '');
+  offBtn.addEventListener('click', () => { onlineMode = false; trainingMode = false; disconnectOnline(); buildModePicker(); refreshRoomPanel(); });
+
+  const trainBtn = document.createElement('button');
+  trainBtn.textContent = 'ТРЕНИРОВКА (полигон)';
+  trainBtn.className = 'modeBtn' + (trainingMode ? ' active' : '');
+  trainBtn.addEventListener('click', () => { onlineMode = false; trainingMode = true; disconnectOnline(); buildModePicker(); refreshRoomPanel(); });
+
+  const onBtn = document.createElement('button');
+  onBtn.textContent = 'ОНЛАЙН (мультиплеер)';
+  onBtn.className = 'modeBtn' + (onlineMode ? ' active' : '');
+  onBtn.addEventListener('click', () => { onlineMode = true; trainingMode = false; buildModePicker(); refreshRoomPanel(); });
+
+  el.appendChild(offBtn); el.appendChild(trainBtn); el.appendChild(onBtn);
+  refreshRoomPanel();
+}
+
+function refreshRoomPanel() {
+  document.getElementById('roomPanel').style.display = onlineMode ? 'flex' : 'none';
+  const status = document.getElementById('roomStatus');
+  if (!onlineMode) { status.textContent = ''; return; }
+  status.textContent = netConnected ? `Подключено, команда: ${netTeam === 'ally' ? 'союзники' : 'противники'}` : 'Не подключено';
+  status.className = netConnected ? 'ok' : '';
+  document.getElementById('battleBtn').disabled = onlineMode && !netConnected;
+  document.getElementById('battleBtn').style.opacity = (onlineMode && !netConnected) ? '0.4' : '1';
+}
+
+document.getElementById('roomConnectBtn').addEventListener('click', async () => {
+  const status = document.getElementById('roomStatus');
+  const name = document.getElementById('roomNameInput').value.trim() || 'Игрок';
+  const room = document.getElementById('roomCodeInput').value.trim() || 'default';
+  status.textContent = 'Подключение...'; status.className = '';
+  try {
+    await connectOnline(SERVER_URL, room, name, selectedClass);
+    refreshRoomPanel();
+  } catch (e) {
+    status.textContent = 'Ошибка подключения. Проверьте адрес сервера (SERVER_URL) в коде.';
+    status.className = 'err';
+  }
+});
+
+function hangarLoop() {
+  if (currentMode !== 'hangar') return;
+  const dt = hangarClock.getDelta();
+  if (hangarTankObj) hangarTankObj.group.rotation.y += dt * 0.4;
+  renderer.render(hangarScene, hangarCamera);
+  requestAnimationFrame(hangarLoop);
+}
+
+/* ======================================================================
+   БОЙ: мир, физика, ИИ, стрельба (переиспользуем логику приведённой брони)
+   ====================================================================== */
+
+const WORLD_SIZE = 90;
+
+let battleScene, battleClock;
+let playerTank, tanks = [], shells = [], particles = [];
+let obstacles3D = [];
+let bases = { ally: {x:0,z:0}, enemy: {x:0,z:0} };
+const CAP_RADIUS = 10;
+const CAP_TIME = 45; // секунд непрерывного удержания для полного захвата
+let captureProgress = { allyOnEnemyBase: 0, enemyOnAllyBase: 0 };
+let battleTimer = 600;
+let battleActive = false;
+let battleStats = { kills: 0, damage: 0 };
+
+let sniperMode = false;
+let pointerLocked = false;
+const SPOT_DURATION = 4.0; // сколько секунд танк остаётся видимым после потери прямой видимости
+let isMobileMode = false;
+
+function angleDiff(a, b) { let d = (b - a + Math.PI) % (Math.PI*2) - Math.PI; if (d < -Math.PI) d += Math.PI*2; return d; }
+function normAngle(a) { while (a > Math.PI) a -= Math.PI*2; while (a < -Math.PI) a += Math.PI*2; return a; }
+function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+
+class BattleTank {
+  constructor(classKey, isPlayer, x, z, hullAngle, teamEnemy) {
+    this.classKey = classKey;
+    this.def = isPlayer ? applyEquipment(VEHICLE_CLASSES[classKey]) : VEHICLE_CLASSES[classKey];
+    this.isPlayer = isPlayer;
+    this.isEnemy = teamEnemy;
+    this.x = x; this.z = z;
+    this.hullAngle = hullAngle;
+    this.turretYaw = hullAngle;
+    this.hp = this.def.hp; this.maxHp = this.def.hp;
+    this.alive = true;
+    this.reloadTimer = 0;
+    this.aiState = 'patrol';
+    this.aiTarget = { x, z };
+    this.aiFireCd = Math.random()*1.5;
+
+    this.vx = 0; this.vz = 0;       // фактическая скорость (для тарана)
+    this.currentSpeed = 0;          // текущая скорость по продольной оси (для разгона/торможения)
+    this.y = 0;                     // высота над базовым уровнем земли (подъём на холмы)
+    this.spread = this.def.spreadMax; // текущий разброс прицела (радианы)
+    this.ramCooldown = 0;             // защита от многократного урона за одно столкновение
+    this.spottedTimer = 0;            // >0 значит танк засвечен и виден противнику
+    this.turretPitch = 0;             // угол вертикального наведения ствола (радианы, + вверх)
+    this.shellType = 'AP';            // текущий выбранный тип снаряда (актуально для игрока)
+
+    // модули - упрощённая система критических повреждений (только у игрока)
+    this.modules = {
+      tracks: { broken: false, timer: 0 },
+      engine: { broken: false, timer: 0 },
+      gun:    { broken: false, timer: 0 }
+    };
+    this.repairKits = 2; // количество ремкомплектов на бой (мгновенный ремонт всех модулей)
+
+    const mesh = buildTankMesh(this.def);
+    this.mesh = mesh;
+    this.muzzleOffset = mesh.muzzleOffset;
+    battleScene.add(mesh.group);
+    this.updateMeshTransform();
+  }
+
+  // текущий множитель скорости с учётом повреждённых модулей (гусеницы/двигатель)
+  getSpeedMultiplier() {
+    if (this.modules.tracks.broken) return 0;
+    if (this.modules.engine.broken) return 0.5;
+    return 1;
+  }
+
+  // текущий множитель времени перезарядки с учётом повреждённого орудия
+  getReloadMultiplier() {
+    return this.modules.gun.broken ? 1.7 : 1;
+  }
+
+  updateModules(dt) {
+    for (const key in this.modules) {
+      const m = this.modules[key];
+      if (m.broken) {
+        m.timer -= dt;
+        if (m.timer <= 0) m.broken = false; // пассивный автоматический ремонт экипажем со временем
+      }
+    }
+  }
+
+  useRepairKit() {
+    if (this.repairKits <= 0) return false;
+    let hadDamage = false;
+    for (const key in this.modules) {
+      if (this.modules[key].broken) { this.modules[key].broken = false; this.modules[key].timer = 0; hadDamage = true; }
+    }
+    if (hadDamage) { this.repairKits--; return true; }
+    return false;
+  }
+
+  updateMeshTransform() {
+    this.mesh.group.position.set(this.x, this.y||0, this.z);
+    this.mesh.group.rotation.y = -this.hullAngle;
+    this.mesh.turretGroup.rotation.y = -(this.turretYaw - this.hullAngle);
+    this.mesh.gunPitchGroup.rotation.z = this.turretPitch;
+  }
+
+  getHitFace(impactAngle) {
+    const rel = normAngle(impactAngle - this.hullAngle);
+    const deg = Math.abs(rel * 180/Math.PI);
+    if (deg < 55) return 'front';
+    if (deg > 125) return 'rear';
+    return 'side';
+  }
+
+  effectiveArmor(face, impactAngle) {
+    const base = this.def.armor[face];
+    const rel = normAngle(impactAngle - this.hullAngle);
+    let off;
+    if (face === 'front') off = rel;
+    else if (face === 'rear') off = rel - Math.PI;
+    else off = rel - (rel > 0 ? Math.PI/2 : -Math.PI/2);
+    const cosA = Math.max(Math.cos(off), 0.05);
+    return { effective: base/cosA, angleFromNormalDeg: Math.abs(off*180/Math.PI) };
+  }
+
+  destroy() {
+    battleScene.remove(this.mesh.group);
+  }
+}
+
+function buildGroundTexture(variant) {
+  variant = variant || 'grass';
+  const size = 1024;
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const cx = c.getContext('2d');
+
+  const palettes = {
+    grass: { base:'#4f6236', patches:['#5c6f3f','#46592f','#6b6440','#3f4f2a'], road:'rgba(120,105,80,0.55)' },
+    desert: { base:'#a68a5c', patches:['#b6996a','#8f7549','#c4a878','#7d6640'], road:'rgba(90,75,55,0.4)' },
+    urban: { base:'#5a5a54', patches:['#666660','#4a4a44','#70706a','#3e3e38'], road:'rgba(40,40,38,0.65)' }
+  };
+  const pal = palettes[variant] || palettes.grass;
+
+  cx.fillStyle = pal.base;
+  cx.fillRect(0, 0, size, size);
+
+  for (let i = 0; i < 260; i++) {
+    cx.fillStyle = pal.patches[i % pal.patches.length];
+    cx.globalAlpha = 0.25 + Math.random()*0.3;
+    const x = Math.random()*size, y = Math.random()*size, r = 20 + Math.random()*70;
+    cx.beginPath(); cx.ellipse(x, y, r, r*0.6, Math.random()*Math.PI, 0, Math.PI*2); cx.fill();
+  }
+  cx.globalAlpha = 1;
+
+  // дороги, пересекающие карту - ориентир для игрока и визуальное разнообразие
+  cx.strokeStyle = pal.road;
+  cx.lineWidth = variant === 'urban' ? 46 : 34;
+  cx.beginPath(); cx.moveTo(0, size*0.35); cx.bezierCurveTo(size*0.3,size*0.5, size*0.6,size*0.25, size, size*0.42); cx.stroke();
+  cx.beginPath(); cx.moveTo(size*0.5, 0); cx.bezierCurveTo(size*0.4,size*0.4, size*0.55,size*0.65, size*0.48, size); cx.stroke();
+
+  // мелкий шум для убирания "пластикового" вида плоской заливки
+  const imgData = cx.getImageData(0,0,size,size);
+  for (let i=0;i<imgData.data.length;i+=4){
+    const n = (Math.random()-0.5)*14;
+    imgData.data[i] = clamp(imgData.data[i]+n,0,255);
+    imgData.data[i+1] = clamp(imgData.data[i+1]+n,0,255);
+    imgData.data[i+2] = clamp(imgData.data[i+2]+n,0,255);
+  }
+  cx.putImageData(imgData,0,0);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(10, 10);
+  return tex;
+}
+
+/* ======================================================================
+   КАРТЫ - несколько наборов препятствий/декораций на выбор в ангаре
+   ====================================================================== */
+
+const MAP_DEFS = {
+  mixed: {
+    name: 'Смешанная местность', ground: 'grass', fogColor: 0x8fb0c9, skyColor: 0x8fb0c9, treeCount: 40,
+    buildings: [
+      [20,10,8,8,4,0x6e5f45,260],[-25,20,6,14,5,0x6e5f45],[35,-30,10,7,4,0x6e5f45,220],
+      [-15,-35,9,9,5,0x6e5f45],[0,35,14,6,3.5,0x6e5f45,300],[-40,0,5,5,4,0x6e5f45,180],
+      [45,35,7,7,4.5,0x6e5f45],[10,-15,6,10,3.5,0x6e5f45,220],
+      [-55,-45,12,8,4.2,0x736247],[55,-10,8,12,5,0x736247],[-8,55,10,10,3.8,0x6e5f45],
+      [65,55,9,6,4,0x6e5f45],[-65,40,7,7,4.6,0x736247]
+    ],
+    rocks: [[-32,-15],[30,20],[-10,-55],[60,-45],[-48,25],[15,48],[-70,5],[38,60]],
+    hills: [[-55,55,16,6],[55,-55,15,5.5],[0,-72,13,5],[72,22,14,5.5],[-20,60,11,4],[30,-65,12,4.5]]
+  },
+  desert: {
+    name: 'Пустошь', ground: 'desert', fogColor: 0xd9c48f, skyColor: 0xd9c48f, treeCount: 4,
+    buildings: [
+      [0,0,10,10,3,0x8a7550,240],[40,40,8,8,3.5,0x8a7550,200],[-40,-40,8,8,3.5,0x8a7550,200],
+      [50,-20,6,10,3,0x776243],[-50,20,6,10,3,0x776243]
+    ],
+    rocks: [
+      [-20,10],[20,-10],[-45,0],[45,0],[0,45],[0,-45],[-30,-30],[30,30],
+      [-60,25],[60,-25],[15,60],[-15,-60],[70,10],[-70,-10]
+    ],
+    hills: [[-50,-10,20,8],[50,10,18,7],[10,55,16,6.5],[-10,-55,16,6.5],[65,-45,13,5.5],[-65,45,13,5.5],[0,0,10,3.5]]
+  },
+  urban: {
+    name: 'Городские руины', ground: 'urban', fogColor: 0x6b6d6f, skyColor: 0x6b6d6f, treeCount: 6,
+    buildings: [
+      [15,15,9,9,6,0x565650,260],[-15,15,9,9,7,0x5c5c56,300],[15,-15,9,9,5,0x525248,220],
+      [-15,-15,9,9,6.5,0x5a5a52,260],[40,0,7,16,5,0x4e4e46,300],[-40,0,7,16,6,0x545048,340],
+      [0,40,16,7,5.5,0x585850,320],[0,-40,16,7,6,0x4c4c44,340],
+      [55,35,8,8,4.5,0x565650,240],[-55,-35,8,8,5,0x5c5c56,260],[55,-35,8,8,5.5,0x525248,260],[-55,35,8,8,4.5,0x5a5a52,240],
+      [70,0,6,6,7,0x4e4e46,300],[-70,0,6,6,6.5,0x545048,280]
+    ],
+    rocks: [[25,-45],[-25,45]],
+    hills: [[-70,60,10,4],[70,-60,10,4]]
+  },
+  hills: {
+    name: 'Холмистая местность', ground: 'grass', fogColor: 0x9cc4d8, skyColor: 0x9cc4d8, treeCount: 22,
+    buildings: [
+      [0,0,8,8,3.5,0x6e5f45,220],[-30,-30,6,6,3.5,0x6e5f45,180],[30,30,6,6,3.5,0x6e5f45,180]
+    ],
+    rocks: [[-45,45],[45,-45],[0,60],[0,-60],[60,0],[-60,0]],
+    hills: [
+      [-40,-40,18,9],[40,40,18,9],[0,-55,15,7.5],[0,55,15,7.5],[-55,0,15,7.5],[55,0,15,7.5],
+      [-70,50,12,6],[70,-50,12,6],[-70,-50,11,5.5],[70,50,11,5.5],[25,-20,10,4.5],[-25,20,10,4.5]
+    ]
+  }
+};
+let selectedMap = 'mixed';
+
+/* ======================================================================
+   МУЛЬТИПЛЕЕР - WebSocket-клиент к relay-серверу (server.js).
+   Архитектура: каждый клиент авторитативен только за СВОИМ танком.
+   Танки других игроков ("remote") в бою - это обычные BattleTank с флагом
+   isRemote=true: они не двигаются локальной физикой/ИИ, их x/z/hp просто
+   обновляются по сети. Снаряды летят только у локального игрока (и у
+   офлайн-ботов) - выстрел чужого игрока не рендерится как летящий снаряд,
+   зато при попадании по вам вы получаете событие 'hitResult' и корректно
+   теряете HP. Это осознанное упрощение ради разумного объёма кода.
+   ====================================================================== */
+
+// ВАЖНО: после деплоя server.js (см. README) подставьте сюда его адрес,
+// например 'wss://your-app.onrender.com'. Для локального теста - 'ws://localhost:8080'.
+let SERVER_URL = 'wss://YOUR-SERVER-ADDRESS.onrender.com';
+
+let onlineMode = false;
+let trainingMode = false;
+let ws = null;
+let netId = null, netTeam = null, netRoom = null, netConnected = false;
+const remoteTanks = {}; // netPlayerId -> BattleTank (isRemote=true)
+let pendingRemotePlayers = []; // игроки, о которых узнали ещё в ангаре, до создания battleScene
+let netSendTimer = 0;
+
+function connectOnline(serverUrl, room, name, classId) {
+  return new Promise((resolve, reject) => {
+    try { ws = new WebSocket(serverUrl); } catch (e) { reject(e); return; }
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ t: 'join', room, name, classId }));
+    };
+    ws.onerror = (e) => reject(e);
+    ws.onclose = () => { netConnected = false; };
+
+    ws.onmessage = (ev) => {
+      let msg;
+      try { msg = JSON.parse(ev.data); } catch (e) { return; }
+
+      if (msg.t === 'joined') {
+        netId = msg.id; netTeam = msg.team; netRoom = room; netConnected = true;
+        msg.players.forEach(p => spawnRemoteTank(p.id, p));
+        resolve(msg);
+        return;
+      }
+      if (msg.t === 'join_error') { reject(new Error(msg.reason)); return; }
+      if (msg.t === 'player_joined') { spawnRemoteTank(msg.id, msg); return; }
+      if (msg.t === 'player_left') { removeRemoteTank(msg.id); return; }
+      if (msg.t === 'state') { applyRemoteState(msg); return; }
+      if (msg.t === 'hitResult') { applyRemoteHit(msg); return; }
+    };
+  });
+}
+
+function spawnRemoteTank(id, info) {
+  if (remoteTanks[id]) return;
+  if (!battleScene) { pendingRemotePlayers.push([id, info]); return; }
+  const isEnemyForUs = info.team !== netTeam;
+  const rt = new BattleTank(info.classId || 'medium_2', false, bases[isEnemyForUs?'enemy':'ally'].x, bases[isEnemyForUs?'enemy':'ally'].z, 0, isEnemyForUs);
+  rt.isRemote = true;
+  rt.netId = id;
+  rt.netName = info.name || 'Игрок';
+  remoteTanks[id] = rt;
+  tanks.push(rt);
+}
+
+function flushPendingRemotePlayers() {
+  const pending = pendingRemotePlayers;
+  pendingRemotePlayers = [];
+  pending.forEach(([id, info]) => spawnRemoteTank(id, info));
+}
+
+function removeRemoteTank(id) {
+  const rt = remoteTanks[id];
+  if (!rt) return;
+  rt.alive = false;
+  battleScene.remove(rt.mesh.group);
+  tanks = tanks.filter(t => t !== rt);
+  delete remoteTanks[id];
+}
+
+function applyRemoteState(msg) {
+  const rt = remoteTanks[msg.from];
+  if (!rt) return;
+  const wasAlive = rt.alive;
+  rt.x = msg.x; rt.z = msg.z; rt.y = getTerrainHeight(msg.x, msg.z);
+  rt.hullAngle = msg.hullAngle; rt.turretYaw = msg.turretYaw; rt.turretPitch = msg.turretPitch || 0;
+  rt.hp = msg.hp; rt.alive = msg.alive; rt.shellType = msg.shellType || 'AP';
+  rt.updateMeshTransform();
+  if (wasAlive && !rt.alive) destroyTank(rt, null); // визуал уничтожения при переходе жив->мёртв
+}
+
+function applyRemoteHit(msg) {
+  if (msg.targetId !== netId || !playerTank || !playerTank.alive) return;
+  playerTank.hp -= msg.dmg;
+  spawnSpark(msg.x, msg.y, msg.z, 0xff5a2a, 12);
+  spawnFloatingText('-' + msg.dmg, '#ff3333', true);
+  flashRam();
+  logHit(`Пробитие в ${msg.face==='front'?'лоб':msg.face==='rear'?'корму':'борт'} (ВАС): -${msg.dmg}`, '#a8402f');
+  if (playerTank.hp <= 0 && playerTank.alive) destroyTank(playerTank, null);
+}
+
+function netSendState(dt) {
+  if (!onlineMode || !netConnected || !playerTank) return;
+  netSendTimer -= dt;
+  if (netSendTimer > 0) return;
+  netSendTimer = 0.1; // ~10 раз/сек
+  ws.send(JSON.stringify({
+    t: 'state', x: playerTank.x, z: playerTank.z,
+    hullAngle: playerTank.hullAngle, turretYaw: playerTank.turretYaw, turretPitch: playerTank.turretPitch,
+    hp: playerTank.hp, alive: playerTank.alive, shellType: playerTank.shellType, classId: playerTank.classKey
+  }));
+}
+
+function netSendHit(targetNetId, dmg, face, x, y, z) {
+  if (!onlineMode || !netConnected) return;
+  ws.send(JSON.stringify({ t: 'hitResult', targetId: targetNetId, dmg, face, x, y, z }));
+}
+
+function disconnectOnline() {
+  if (ws) { try { ws.close(); } catch(e){} }
+  ws = null; netConnected = false; netId = null; netTeam = null;
+  Object.keys(remoteTanks).forEach(removeRemoteTank);
+}
+
+function makeObstacle(x, z, w, d, height, color, hp) {
+  const geo = new THREE.BoxGeometry(w, height, d);
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.85 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(x, height/2, z);
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  battleScene.add(mesh);
+  const ob = { x, z, hw: w/2, hd: d/2, height, mesh, destructible: !!hp, hp: hp||0, maxHp: hp||0, destroyed: false };
+  obstacles3D.push(ob);
+  return ob;
+}
+
+// разрушение здания при накоплении достаточного урона от снарядов
+function damageObstacle(ob, dmg) {
+  if (!ob.destructible || ob.destroyed) return;
+  ob.hp -= dmg;
+  // лёгкое проседание/наклон здания по мере разрушения - визуальная обратная связь
+  const wearT = 1 - clamp(ob.hp/ob.maxHp, 0, 1);
+  ob.mesh.position.y = (ob.height/2) - wearT*ob.height*0.35;
+  ob.mesh.rotation.z = wearT * 0.08 * (ob.x > 0 ? 1 : -1);
+  if (ob.hp <= 0) collapseObstacle(ob);
+}
+
+function collapseObstacle(ob) {
+  ob.destroyed = true;
+  spawnExplosion(ob.x, ob.height*0.4, ob.z);
+  battleScene.remove(ob.mesh);
+  // низкая куча обломков вместо здания - больше не блокирует обзор/движение (только небольшая кочка)
+  const rubbleGeo = new THREE.BoxGeometry(ob.hw*2, ob.height*0.22, ob.hd*2);
+  const rubbleMat = new THREE.MeshStandardMaterial({ color: 0x2a2620, roughness: 1 });
+  const rubble = new THREE.Mesh(rubbleGeo, rubbleMat);
+  rubble.position.set(ob.x, ob.height*0.11, ob.z);
+  rubble.receiveShadow = true;
+  battleScene.add(rubble);
+  ob.hw *= 0.9; ob.hd *= 0.9; ob.height *= 0.22; // обломки ниже - арта/РСЗО перелетают, обычный снаряд ещё блокируется вблизи
+  logHit('Здание разрушено!', '#c9a13b');
+}
+
+function boxCircleCollide(cx, cz, r, ob) {
+  const closestX = clamp(cx, ob.x-ob.hw, ob.x+ob.hw);
+  const closestZ = clamp(cz, ob.z-ob.hd, ob.z+ob.hd);
+  return Math.hypot(cx-closestX, cz-closestZ) < r;
+}
+
+function segRectIntersect(x1,z1,x2,z2,ob) {
+  const rx1=ob.x-ob.hw, rz1=ob.z-ob.hd, rx2=ob.x+ob.hw, rz2=ob.z+ob.hd;
+  const lines = [[rx1,rz1,rx2,rz1],[rx2,rz1,rx2,rz2],[rx2,rz2,rx1,rz2],[rx1,rz2,rx1,rz1]];
+  for (const [x3,z3,x4,z4] of lines) if (segSeg(x1,z1,x2,z2,x3,z3,x4,z4)) return true;
+  return false;
+}
+function segSeg(x1,y1,x2,y2,x3,y3,x4,y4) {
+  const d=(x2-x1)*(y4-y3)-(y2-y1)*(x4-x3);
+  if (d===0) return false;
+  const t=((x3-x1)*(y4-y3)-(y3-y1)*(x4-x3))/d;
+  const u=((x3-x1)*(y2-y1)-(y3-y1)*(x2-x1))/d;
+  return t>=0&&t<=1&&u>=0&&u<=1;
+}
+function hasLOS(x1,z1,x2,z2) {
+  for (const ob of obstacles3D) if (segRectIntersect(x1,z1,x2,z2,ob)) return false;
+  return true;
+}
+
+function getGroundType() {
+  // грунт определяется картой целиком (упрощение - без зон разного грунта внутри одной карты)
+  const map = MAP_DEFS[selectedMap];
+  if (!map) return 'medium';
+  if (map.ground === 'desert') return 'soft';
+  if (map.ground === 'urban') return 'hard';
+  return 'medium';
+}
+
+function moveTank(t, dt, throttle) {
+  const prevX = t.x, prevZ = t.z;
+  const speedMult = t.getSpeedMultiplier ? t.getSpeedMultiplier() : 1;
+  const groundType = getGroundType();
+  const resistance = t.def.terrainResistance ? t.def.terrainResistance[groundType] : 1;
+
+  // целевая скорость от газа: вперёд - полная скорость, назад - урезанная (реверс всегда медленнее)
+  const targetSpeed = throttle * t.def.speed * speedMult * (throttle < 0 ? t.def.reverseSpeedMult : 1);
+
+  // разгон/торможение не мгновенные - опираются на accel/decel класса, гружёные сопротивлением грунта
+  const accel = (t.def.accel || 4) / resistance;
+  const decel = (t.def.decel || 6) / resistance;
+  const rate = (Math.abs(targetSpeed) > Math.abs(t.currentSpeed) || Math.sign(targetSpeed) !== Math.sign(t.currentSpeed||1)) ? accel : decel;
+
+  if (t.currentSpeed < targetSpeed) t.currentSpeed = Math.min(targetSpeed, t.currentSpeed + rate*dt);
+  else if (t.currentSpeed > targetSpeed) t.currentSpeed = Math.max(targetSpeed, t.currentSpeed - rate*dt);
+
+  const nx = t.x + Math.cos(t.hullAngle)*t.currentSpeed*dt;
+  const nz = t.z + Math.sin(t.hullAngle)*t.currentSpeed*dt;
+  let blocked = false;
+  for (const ob of obstacles3D) if (boxCircleCollide(nx, nz, 1.6, ob)) { blocked = true; break; }
+  const lim = WORLD_SIZE - 2;
+  if (!blocked && nx > -lim && nx < lim && nz > -lim && nz < lim) {
+    // крутой подъём заметно гасит скорость (тяжёлая техника страдает больше - учтено через mass)
+    const slope = getTerrainSlope(nx, nz);
+    const slopePenalty = clamp(1 - slope * 1.4 * (t.def.mass/1.5), 0.25, 1);
+    t.x = nx; t.z = nz;
+    t.currentSpeed *= (slope > 0.05 ? slopePenalty : 1);
+  }
+  else t.currentSpeed *= 0.2; // удар о препятствие/стену резко гасит скорость
+
+  t.y = getTerrainHeight(t.x, t.z);
+
+  // фактическая скорость по факту перемещения (после учёта столкновений со стенами) - нужна для тарана
+  t.vx = (t.x - prevX) / dt; t.vz = (t.z - prevZ) / dt;
+}
+
+const TANK_RADIUS = 1.9;
+
+function resolveTankCollisions(dt) {
+  for (let i = 0; i < tanks.length; i++) {
+    const a = tanks[i];
+    if (!a.alive) continue;
+    if (a.ramCooldown > 0) a.ramCooldown -= dt;
+    for (let j = i+1; j < tanks.length; j++) {
+      const b = tanks[j];
+      if (!b.alive) continue;
+      const dx = b.x - a.x, dz = b.z - a.z;
+      const d = Math.hypot(dx, dz);
+      const minDist = TANK_RADIUS * 2;
+      if (d < minDist && d > 0.001) {
+        // расталкиваем танки, чтобы не проходили друг сквозь друга
+        const overlap = (minDist - d) / 2;
+        const nx = dx / d, nz = dz / d;
+        a.x -= nx*overlap; a.z -= nz*overlap;
+        b.x += nx*overlap; b.z += nz*overlap;
+
+        // таранный урон: считаем по относительной скорости сближения и массе,
+        // срабатывает только если кто-то из танков реально двигался на скорости
+        const relVx = a.vx - b.vx, relVz = a.vz - b.vz;
+        const closingSpeed = Math.abs(relVx*nx + relVz*nz);
+
+        if (closingSpeed > 2.5 && a.ramCooldown <= 0 && b.ramCooldown <= 0 && !a.isRemote && !b.isRemote) {
+          a.ramCooldown = 1.0; b.ramCooldown = 1.0;
+          applyRamDamage(a, b, closingSpeed);
+        }
+      }
+    }
+  }
+}
+
+function applyRamDamage(a, b, closingSpeed) {
+  // урон пропорционален скорости столкновения и массе атакующего танка,
+  // цель с большей массой получает меньше урона (тяжёлый таранит легче, чем наоборот)
+  const baseDmg = closingSpeed * 3.2;
+  const dmgToB = Math.round(baseDmg * a.def.ramDamageFactor / b.def.mass);
+  const dmgToA = Math.round(baseDmg * b.def.ramDamageFactor / a.def.mass);
+
+  b.hp -= dmgToB; a.hp -= dmgToA;
+  if (a.isPlayer && dmgToB > 0) { battleStats.damage += dmgToB; spawnFloatingText('-'+dmgToB+' (таран)', '#ff8a4a', false); }
+  if (b.isPlayer && dmgToA > 0) spawnFloatingText('-'+dmgToA+' (таран)', '#ff3333', false);
+
+  spawnSpark((a.x+b.x)/2, 1.3, (a.z+b.z)/2, 0xffaa55, 10);
+  if (a.isPlayer || b.isPlayer) flashRam();
+  logHit(`Таран! ${a.isPlayer ? 'ВЫ' : (a.isEnemy?'враг':'союзник')} -${dmgToA} / ${b.isPlayer ? 'ВЫ' : (b.isEnemy?'враг':'союзник')} -${dmgToB}`, '#e0762c');
+
+  [[a,dmgToA],[b,dmgToB]].forEach(([t, dmg]) => {
+    if (t.hp <= 0 && t.alive) {
+      const killer = t === a ? b : a;
+      destroyTank(t, killer);
+      if (killer.isPlayer && t.isEnemy) logHit('Танк уничтожен тараном!', '#c9a13b');
+    }
+  });
+}
+
+function flashRam() {
+  const el = document.getElementById('ramFlash');
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 60);
+}
+
+const SHELL_SPEED = 130;
+const GRAVITY = 24; // условная игровая гравитация (не физически точная, подобрана для баланса дальности)
+const TARGET_HIT_HEIGHT = 1.5; // средняя высота корпуса+башни, используется при проверке попадания по вертикали
+const TARGET_HIT_TOLERANCE = 1.4;
+
+// Типы снарядов: множители к базовым характеристикам орудия танка
+const SHELL_PROFILES = {
+  AP:   { label: 'Бронебойный',        penMult: 1.00, dmgMult: 1.00, speedMult: 1.00, ricochetBonus: 0,  color: 0xffdd88 },
+  APCR: { label: 'Подкалиберный',      penMult: 1.45, dmgMult: 0.80, speedMult: 1.35, ricochetBonus: 6,  color: 0x8fd0ff },
+  HE:   { label: 'Осколочно-фугасный', penMult: 0.55, dmgMult: 1.45, speedMult: 0.75, ricochetBonus: 100, color: 0xff8a4a }
+};
+const SHELL_ORDER = ['AP', 'APCR', 'HE'];
+
+function fireShell(t) {
+  if (t.reloadTimer > 0 || !t.alive) return;
+  t.reloadTimer = t.def.reload * (t.getReloadMultiplier ? t.getReloadMultiplier() : 1);
+
+  if (t.def.isRocketArty) {
+    // залп реактивной артиллерии - несколько ракет подряд с небольшим интервалом и увеличенным разбросом
+    const salvo = 4;
+    for (let i = 0; i < salvo; i++) {
+      setTimeout(() => { if (t.alive) fireSingleShell(t, t.spread * 1.8, 0.55); }, i * 90);
+    }
+  } else {
+    fireSingleShell(t, t.spread, 1.0);
+  }
+}
+
+function fireSingleShell(t, spreadOverride, dmgShare) {
+  const shellType = t.isPlayer ? (t.shellType || 'AP') : 'AP';
+  const profile = SHELL_PROFILES[shellType];
+
+  // разброс по горизонтали и чуть-чуть по вертикали в пределах текущего конуса разброса
+  const actualYaw = t.turretYaw + (Math.random()-0.5)*2*spreadOverride;
+  const actualPitch = t.turretPitch + (Math.random()-0.5)*spreadOverride*0.3;
+
+  const speed = SHELL_SPEED * profile.speedMult;
+  const horizSpeed = Math.cos(actualPitch) * speed;
+  const dirX = Math.cos(actualYaw), dirZ = Math.sin(actualYaw);
+  const vx = dirX * horizSpeed, vz = dirZ * horizSpeed;
+  const vy = Math.sin(actualPitch) * speed;
+
+  const muzzleY = (t.y||0) + t.mesh.turretHeight + Math.sin(actualPitch) * t.muzzleOffset * 0.3;
+  const mx = t.x + dirX * t.muzzleOffset * Math.cos(actualPitch);
+  const mz = t.z + dirZ * t.muzzleOffset * Math.cos(actualPitch);
+
+  const tracerGeo = new THREE.SphereGeometry(0.12, 6, 6);
+  const tracerMat = new THREE.MeshBasicMaterial({ color: profile.color });
+  const tracer = new THREE.Mesh(tracerGeo, tracerMat);
+  tracer.position.set(mx, muzzleY, mz);
+  battleScene.add(tracer);
+
+  // игрок стреляет с честной баллистикой (гравитация влияет на траекторию),
+  // боты используют упрощённую настильную траекторию, чтобы сохранить их прицельность и не усложнять ИИ
+  const useGravity = t.isPlayer;
+
+  shells.push({
+    x: mx, y: muzzleY, z: mz,
+    vx, vy: useGravity ? vy : 0, vz,
+    owner: t, life: 3.5, tracerMesh: tracer, useGravity,
+    shellType, profile, dmgShare
+  });
+}
+
+function logHit(text, color) {
+  const log = document.getElementById('hitLog');
+  const div = document.createElement('div');
+  div.textContent = text; div.style.color = color || 'var(--muted)';
+  log.prepend(div);
+  while (log.children.length > 6) log.removeChild(log.lastChild);
+  setTimeout(() => div.style.opacity = '0', 2500);
+}
+
+function spawnSpark(x, y, z, color, count) {
+  const c = color || 0xffaa55;
+  for (let i=0;i<(count||10);i++){
+    const geo = new THREE.SphereGeometry(0.05,4,4);
+    const mat = new THREE.MeshBasicMaterial({ color: c });
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    battleScene.add(m);
+    particles.push({ mesh:m, vx:(Math.random()-0.5)*6, vy:Math.random()*4, vz:(Math.random()-0.5)*6, life:0.5 });
+  }
+}
+
+function spawnExplosion(x, y, z) {
+  spawnSpark(x, y, z, 0xff9933, 22);
+  spawnSpark(x, y, z, 0x555555, 14);
+  spawnSpark(x, y, z, 0xffdd66, 8);
+}
+
+// плавающая надпись об уроне/событии - появляется по центру экрана и уплывает вверх с затуханием
+function spawnFloatingText(text, color, big) {
+  const el = document.createElement('div');
+  el.textContent = text;
+  el.style.cssText = `position:absolute; left:50%; top:${big?'42%':'46%'}; transform:translateX(-50%);
+    color:${color}; font-size:${big?'26px':'18px'}; font-weight:bold; text-shadow:0 0 8px #000;
+    pointer-events:none; z-index:18; transition: transform 1.1s ease-out, opacity 1.1s ease-out;`;
+  document.getElementById('battleHUD').appendChild(el);
+  requestAnimationFrame(() => {
+    el.style.transform = `translate(-50%, -60px)`;
+    el.style.opacity = '0';
+  });
+  setTimeout(() => el.remove(), 1200);
+}
+
+// случайное повреждение модуля при пробитии (гусеницы/двигатель/орудие) - только у игрока,
+// чтобы не усложнять ИИ ботов расчётом последствий
+function rollModuleDamage(target) {
+  if (!target.isPlayer) return null;
+  if (Math.random() > 0.30) return null;
+  const modules = ['tracks', 'engine', 'gun'];
+  const mod = modules[Math.floor(Math.random()*modules.length)];
+  target.modules[mod].broken = true;
+  target.modules[mod].timer = 11 + Math.random()*4;
+  return mod;
+}
+
+const MODULE_NAMES = { tracks: 'гусеницы', engine: 'двигатель', gun: 'орудие' };
+
+function resolveHit(shell, target) {
+  const impactAngle = Math.atan2(shell.vz, shell.vx);
+  const face = target.getHitFace(impactAngle);
+  const { effective, angleFromNormalDeg } = target.effectiveArmor(face, impactAngle);
+  const gun = shell.owner.def;
+  const profile = shell.profile || SHELL_PROFILES.AP;
+  const effectivePen = gun.gunPen * profile.penMult;
+  const ricochetLimit = Math.min(89, target.def.ricochetAngle + profile.ricochetBonus);
+  const faceName = {front:'лоб', side:'борт', rear:'корму'}[face];
+  const who = target.isPlayer ? 'ВАС' : (target.isEnemy ? 'противника' : 'союзника');
+
+  if (angleFromNormalDeg > ricochetLimit) {
+    spawnSpark(shell.x, shell.y, shell.z, 0x6fa8ff, 8); // синяя вспышка - рикошет
+    logHit(`Рикошет от ${faceName} (${who})`, '#6fa8ff');
+    if (shell.owner.isPlayer) spawnFloatingText('РИКОШЕТ', '#6fa8ff', false);
+    return;
+  }
+  if (effectivePen < effective) {
+    spawnSpark(shell.x, shell.y, shell.z, 0xcfcfcf, 8); // белая вспышка - не пробило
+    logHit(`Не пробито: ${faceName} ${effective.toFixed(0)} vs ${effectivePen.toFixed(0)}мм`, '#8b8b78');
+    if (shell.owner.isPlayer) spawnFloatingText('НЕ ПРОБИТИЕ', '#cfcfcf', false);
+    return;
+  }
+
+  const dmgShare = shell.dmgShare || 1.0;
+  const dmg = Math.round(gun.gunDamage * profile.dmgMult * dmgShare * (0.85 + Math.random()*0.3));
+  spawnSpark(shell.x, shell.y, shell.z, 0xff5a2a, 12); // оранжево-красная вспышка - пробитие
+
+  if (target.isRemote) {
+    // удалённый танк - мы не владеем его HP, шлём результат попадания владельцу по сети,
+    // он сам применит урон к себе и разошлёт всем обновлённое состояние
+    netSendHit(target.netId, dmg, face, shell.x, shell.y, shell.z);
+    if (shell.owner.isPlayer) { battleStats.damage += dmg; spawnFloatingText('-' + dmg, '#ff5a2a', true); }
+    logHit(`Пробитие в ${faceName} (${target.netName||'противника'}): -${dmg}`, '#c9a13b');
+    return;
+  }
+
+  target.hp -= dmg;
+
+  const brokenModule = rollModuleDamage(target);
+  const moduleTxt = brokenModule ? `, повреждены ${MODULE_NAMES[brokenModule]}` : '';
+  logHit(`Пробитие в ${faceName} (${who}): -${dmg}${moduleTxt}`, target.isPlayer ? '#a8402f' : '#c9a13b');
+
+  if (shell.owner.isPlayer) {
+    battleStats.damage += dmg;
+    spawnFloatingText('-' + dmg, '#ff5a2a', true);
+  }
+  if (target.isPlayer) {
+    spawnFloatingText('-' + dmg, '#ff3333', true);
+    flashRam(); // используем тот же экранный флеш урона, что и при таране
+  }
+
+  if (target.hp <= 0 && target.alive) {
+    destroyTank(target, shell.owner);
+  }
+}
+
+function destroyTank(target, killer) {
+  target.alive = false;
+  spawnExplosion(target.x, (target.y||0) + target.mesh.turretHeight, target.z);
+  target.mesh.group.visible = true; // обломок остаётся виден на поле независимо от засвета
+  // превращаем модель в обгоревший неподвижный остов вместо исчезновения
+  const origMats = [target.mesh.hullMesh, target.mesh.glacisMesh, target.mesh.turretMesh].map(m => ({
+    mesh: m, map: m.material.map, colorHex: m.material.color.getHex()
+  }));
+  [target.mesh.hullMesh, target.mesh.glacisMesh, target.mesh.turretMesh].forEach(m => {
+    m.material.color.setHex(0x1a1a16);
+    m.material.emissive.setHex(0x000000);
+    m.material.map = null;
+    m.material.needsUpdate = true;
+  });
+  target.mesh.turretGroup.rotation.z = (Math.random()-0.5)*0.3; // лёгкий перекос башни для драматизма
+  if (killer && killer.isPlayer && target.isEnemy) {
+    battleStats.kills++;
+    logHit('Танк уничтожен!', '#c9a13b');
+    spawnFloatingText('УНИЧТОЖЕН', '#c9a13b', true);
+  }
+
+  if (target.isTrainingDummy) {
+    setTimeout(() => {
+      if (!target.alive) {
+        target.hp = target.maxHp; target.alive = true;
+        target.mesh.turretGroup.rotation.z = 0;
+        origMats.forEach(o => { o.mesh.material.map = o.map; o.mesh.material.color.setHex(o.colorHex); o.mesh.material.needsUpdate = true; });
+      }
+    }, 4000);
+  }
+}
+
+/* ======================================================================
+   ЗАСВЕТ (spotting) - танк виден противнику только если его кто-то из
+   вражеской команды видит по прямой видимости и в пределах дальности обзора.
+   После потери видимости танк остаётся "засвеченным" ещё SPOT_DURATION секунд.
+   ====================================================================== */
+
+let bushes = []; // {x,z,r} - кусты дают укрытие: сильно режут дальность обнаружения, если наблюдатель не рядом
+
+let hills = []; // {x,z,r,h} - холмы, на которые танк реально заезжает (высота считается по радиальному спаду)
+
+// высота рельефа в точке (x,z) - максимум по всем холмам (без сложения, иначе стыки холмов давали бы неестественные пики)
+function getTerrainHeight(x, z) {
+  let h = 0;
+  for (const hill of hills) {
+    const d = Math.hypot(x-hill.x, z-hill.z);
+    if (d < hill.r) {
+      const contribution = hill.h * Math.cos((d/hill.r) * (Math.PI/2)); // плавный спад к 0 на границе холма
+      if (contribution > h) h = contribution;
+    }
+  }
+  return h;
+}
+
+// уклон рельефа в точке (используется для штрафа скорости при подъёме) - численная оценка через соседние точки
+function getTerrainSlope(x, z) {
+  const eps = 1.5;
+  const h0 = getTerrainHeight(x, z);
+  const hx = getTerrainHeight(x+eps, z);
+  const hz = getTerrainHeight(x, z+eps);
+  return Math.hypot(hx-h0, hz-h0) / eps;
+}
+
+function isInBush(x, z) {
+  for (const b of bushes) if (Math.hypot(x-b.x, z-b.z) < b.r) return true;
+  return false;
+}
+
+// эффективная дальность, на которой наблюдатель способен засветить цель,
+// с учётом маскировки цели (выше камуфляж/куст/неподвижность - меньше эта дальность)
+function effectiveSpotRange(observer, target) {
+  let camo = target.def.camouflage || 0.15;
+  const targetSpeed = Math.hypot(target.vx, target.vz);
+  if (targetSpeed > 0.5) camo *= target.def.camouflageMoveMult || 0.55;
+  if (target.reloadTimer > target.def.reload - 0.3) camo *= target.def.camouflageFireMult || 0.35; // сразу после выстрела заметнее
+
+  let range = observer.def.viewRange;
+  if (isInBush(target.x, target.z)) {
+    // в кусте цель почти не видна издалека - если сам наблюдатель не в радиусе ~15м
+    const d = Math.hypot(observer.x-target.x, observer.z-target.z);
+    if (d > 16) range = Math.min(range, 16);
+  }
+  range *= (1 - camo*0.55); // маскировка урезает эффективную дальность обнаружения
+  return range;
+}
+
+function updateSpotting(dt) {
+  for (const target of tanks) {
+    if (!target.alive) { target.mesh.group.visible = true; continue; } // обломки видны всегда
+
+    let seenNow = false;
+    for (const observer of tanks) {
+      if (!observer.alive || observer === target) continue;
+      if (observer.isEnemy === target.isEnemy) continue; // своя команда не "засвечивает"
+      const d = Math.hypot(observer.x-target.x, observer.z-target.z);
+      const spotRange = effectiveSpotRange(observer, target);
+      if (d <= spotRange && hasLOS(observer.x, observer.z, target.x, target.z)) {
+        seenNow = true; break;
+      }
+    }
+
+    const wasSpotted = target.spottedTimer > 0;
+    if (seenNow) target.spottedTimer = SPOT_DURATION;
+    else target.spottedTimer = Math.max(0, target.spottedTimer - dt);
+
+    // игрока всегда видно для него самого; союзников тоже всегда показываем своей команде
+    const visibleToPlayer = !target.isEnemy || target.spottedTimer > 0;
+    target.mesh.group.visible = visibleToPlayer;
+
+    if (target.isEnemy && !wasSpotted && target.spottedTimer > 0) {
+      flashSpot();
+      logHit(`Обнаружен противник (${target.def.name})`, '#a8402f');
+    }
+  }
+}
+
+function flashSpot() {
+  const el = document.getElementById('spotFlash');
+  el.classList.add('show');
+  clearTimeout(flashSpot._t);
+  flashSpot._t = setTimeout(() => el.classList.remove('show'), 1400);
+}
+
+function updateBotAI(bot, dt) {
+  if (!bot.alive) return;
+  bot.aiFireCd = Math.max(0, bot.aiFireCd - dt);
+
+  let target = null, bestD = Infinity;
+  for (const t of tanks) {
+    if (t === bot || !t.alive || t.isEnemy === bot.isEnemy) continue;
+    const d = Math.hypot(t.x-bot.x, t.z-bot.z);
+    if (d < bestD) { bestD = d; target = t; }
+  }
+
+  const viewRange = bot.def.viewRange || 50;
+  let canSee = target && hasLOS(bot.x, bot.z, target.x, target.z) && bestD < viewRange;
+
+  if (canSee) bot.aiState = 'attack';
+  else if (bot.aiState === 'attack') bot.aiState = 'advance';
+
+  if (bot.aiState === 'attack' && target) {
+    const desired = Math.atan2(target.z-bot.z, target.x-bot.x);
+    const diff = angleDiff(bot.turretYaw, desired);
+    bot.turretYaw += clamp(diff, -bot.def.turretTurnSpeed*dt, bot.def.turretTurnSpeed*dt);
+
+    // тяжёлая техника/ПТ держат дистанцию иначе, чем лёгкая - лёгкие кружат, ПТ/тяжи стоят и стреляют
+    const preferredDist = bot.def.isTD ? 45 : bot.classKey && bot.classKey.startsWith('light') ? 35 : 28;
+    let moveAngle = desired;
+    if (bestD < preferredDist * 0.6) moveAngle += Math.PI; // слишком близко - пятимся
+    else if (bestD > preferredDist * 1.4) moveAngle = desired; // далеко - сближаемся
+    else moveAngle = desired + Math.PI/2 * (bot.aiFireCd > 0.5 ? 1 : 0); // на комфортной дистанции - подрабатываем бортом/кружим
+
+    const hullDiff = angleDiff(bot.hullAngle, moveAngle);
+    bot.hullAngle += clamp(hullDiff, -bot.def.turnSpeed*dt, bot.def.turnSpeed*dt);
+    if (Math.abs(hullDiff) < 1.3) moveTank(bot, dt, bestD > preferredDist*0.6 ? 1 : -0.5);
+
+    if (Math.abs(diff) < 0.14 && bot.aiFireCd <= 0) { fireShell(bot); bot.aiFireCd = 0.9 + Math.random()*1.3; }
+  } else {
+    // "наступление": идём к точке недалеко от вражеской базы (не в лоб, с небольшим случайным смещением),
+    // так боты сами сходятся в центре карты и реально встречаются друг с другом, а не бродят вслепую
+    const enemyBase = bot.isEnemy ? bases.ally : bases.enemy;
+    if (!bot.aiAdvanceTarget || Math.hypot(bot.x-bot.aiAdvanceTarget.x, bot.z-bot.aiAdvanceTarget.z) < 8) {
+      const ang = Math.random()*Math.PI*2;
+      const r = 10 + Math.random()*25;
+      bot.aiAdvanceTarget = {
+        x: clamp(enemyBase.x + Math.cos(ang)*r, -WORLD_SIZE+5, WORLD_SIZE-5),
+        z: clamp(enemyBase.z + Math.sin(ang)*r, -WORLD_SIZE+5, WORLD_SIZE-5)
+      };
+    }
+    const moveAngle = Math.atan2(bot.aiAdvanceTarget.z-bot.z, bot.aiAdvanceTarget.x-bot.x);
+    const hullDiff = angleDiff(bot.hullAngle, moveAngle);
+    bot.hullAngle += clamp(hullDiff, -bot.def.turnSpeed*dt, bot.def.turnSpeed*dt);
+    bot.turretYaw = bot.hullAngle;
+    if (Math.abs(hullDiff) < 0.7) moveTank(bot, dt, 1);
+  }
+  bot.updateMeshTransform();
+}
+
+/* ======================================================================
+   ИНИЦИАЛИЗАЦИЯ БОЯ
+   ====================================================================== */
+
+function initBattle() {
+  const map = MAP_DEFS[selectedMap] || MAP_DEFS.mixed;
+
+  battleScene = new THREE.Scene();
+  battleScene.background = new THREE.Color(map.skyColor);
+  battleScene.fog = new THREE.Fog(map.fogColor, 40, 140);
+
+  const sun = new THREE.DirectionalLight(0xfff4dd, 1.15);
+  sun.position.set(60, 90, 30);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.left = -100; sun.shadow.camera.right = 100;
+  sun.shadow.camera.top = 100; sun.shadow.camera.bottom = -100;
+  sun.shadow.camera.far = 250;
+  battleScene.add(sun);
+  battleScene.add(new THREE.AmbientLight(0x8fa0b0, 0.65));
+
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(WORLD_SIZE*2.2, WORLD_SIZE*2.2, 1, 1),
+    new THREE.MeshStandardMaterial({ map: buildGroundTexture(map.ground), roughness: 1 })
+  );
+  ground.rotation.x = -Math.PI/2;
+  ground.receiveShadow = true;
+  battleScene.add(ground);
+
+  obstacles3D = [];
+  bushes = [];
+  hills = [];
+
+  map.buildings.forEach(([x,z,w,d,h,c,destructHp]) => makeObstacle(x,z,w,d,h,c,destructHp));
+
+  // каменные глыбы (природные препятствия, другая форма - для визуального разнообразия карты)
+  const rockMat = new THREE.MeshStandardMaterial({ color: 0x8a8578, roughness: 0.95, flatShading: true });
+  map.rocks.forEach(([x,z]) => {
+    const size = 2.2 + Math.random()*2.2;
+    const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(size, 0), rockMat);
+    rock.position.set(x, size*0.5, z);
+    rock.rotation.set(Math.random(), Math.random(), Math.random());
+    rock.castShadow = true; rock.receiveShadow = true;
+    battleScene.add(rock);
+    obstacles3D.push({ x, z, hw: size*0.85, hd: size*0.85, height: size });
+  });
+
+  // холмы - настоящий взбираемый рельеф (НЕ препятствие: танк физически заезжает наверх,
+  // высота считается функцией getTerrainHeight по плавному радиальному спаду от вершины)
+  const hillMat = new THREE.MeshStandardMaterial({ map: buildGroundTexture(map.ground), roughness: 1 });
+  (map.hills || []).forEach(([x,z,r,h]) => {
+    // low-poly купол, форма приближает косинусный спад высоты, которым реально пользуется физика
+    const geo = new THREE.SphereGeometry(r, 20, 12, 0, Math.PI*2, 0, Math.PI/2);
+    geo.scale(1, h/r, 1);
+    const hill = new THREE.Mesh(geo, hillMat);
+    hill.position.set(x, 0, z);
+    hill.castShadow = true; hill.receiveShadow = true;
+    battleScene.add(hill);
+    hills.push({ x, z, r, h });
+  });
+
+  // кусты - дают маскировку укрывшейся в них технике, физически не блокируют движение/обзор геометрически
+  const bushMat = new THREE.MeshStandardMaterial({ color: 0x3f5a2e, roughness: 1 });
+  for (let i=0;i<22;i++){
+    const x=(Math.random()-0.5)*WORLD_SIZE*1.9, z=(Math.random()-0.5)*WORLD_SIZE*1.9;
+    if (Math.hypot(x,z) < 12) continue;
+    const r = 2.2 + Math.random()*1.6;
+    for (let c=0;c<3;c++){
+      const bush = new THREE.Mesh(new THREE.SphereGeometry(r*0.55, 7, 6), bushMat);
+      bush.position.set(x+(Math.random()-0.5)*r, 0.9+Math.random()*0.4, z+(Math.random()-0.5)*r);
+      bush.castShadow = true;
+      battleScene.add(bush);
+    }
+    bushes.push({ x, z, r });
+  }
+
+  // деревья - декоративные, не блокируют физически (создают визуальные "слепые карманы", как в оригинале при взгляде от 1-го лица)
+  for (let i=0;i<map.treeCount;i++){
+    const x=(Math.random()-0.5)*WORLD_SIZE*2.1, z=(Math.random()-0.5)*WORLD_SIZE*2.1;
+    if (Math.hypot(x,z) < 15) continue;
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.25,0.3,2,6), new THREE.MeshStandardMaterial({color:0x4a3a28}));
+    trunk.position.set(x,1,z); trunk.castShadow=true;
+    const crown = new THREE.Mesh(new THREE.ConeGeometry(1.6,3.2,8), new THREE.MeshStandardMaterial({color:0x3d5a2e}));
+    crown.position.set(x,3.2,z); crown.castShadow=true;
+    battleScene.add(trunk); battleScene.add(crown);
+  }
+
+  // базы команд - зоны на противоположных углах карты по диагонали (максимальное разнесение спавнов)
+  const baseOffset = WORLD_SIZE*0.72;
+  bases = {
+    ally:  { x: -baseOffset, z: -baseOffset },
+    enemy: { x:  baseOffset, z:  baseOffset }
+  };
+  [['ally', 0x7a8f4a], ['enemy', 0xa8402f]].forEach(([key, color]) => {
+    const ringGeo = new THREE.RingGeometry(9, 10, 24);
+    const ringMat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent:true, opacity:0.6 });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = -Math.PI/2;
+    ring.position.set(bases[key].x, 0.05, bases[key].z);
+    battleScene.add(ring);
+  });
+
+  tanks = []; shells = []; particles = [];
+  battleTimer = 600; battleStats = { kills:0, damage:0 };
+  artyAimInit = false; artyMarkerMesh = null;
+  captureProgress = { allyOnEnemyBase: 0, enemyOnAllyBase: 0 };
+
+  // спавн вокруг своей базы (в радиусе, не точка-в-точку), чтобы не толкались при старте
+  function spawnAround(base, angle0) {
+    const a = angle0 + (Math.random()-0.5)*0.6;
+    const r = 6 + Math.random()*10;
+    return { x: base.x + Math.cos(a)*r, z: base.z + Math.sin(a)*r };
+  }
+
+  const toEnemyAngle = Math.atan2(bases.enemy.z-bases.ally.z, bases.enemy.x-bases.ally.x);
+
+  const playerIsEnemyTeam = onlineMode && netTeam === 'enemy';
+  const playerBase = playerIsEnemyTeam ? bases.enemy : bases.ally;
+  const playerAngle = playerIsEnemyTeam ? toEnemyAngle + Math.PI : toEnemyAngle;
+
+  playerTank = new BattleTank(selectedClass, true, playerBase.x, playerBase.z, playerAngle, playerIsEnemyTeam);
+  const p0 = spawnAround(playerBase, playerAngle); playerTank.x = p0.x; playerTank.z = p0.z;
+  tanks.push(playerTank);
+
+  if (trainingMode) {
+    // тренировочные мишени - неподвижные, не стреляют, стоят на разных дистанциях и углах для отработки прицеливания
+    const dummySpecs = [
+      { dist: 30, angleOff: 0,    cls: 'medium_2' },
+      { dist: 50, angleOff: 0.3,  cls: 'heavy_2' },
+      { dist: 70, angleOff: -0.4, cls: 'light_2' },
+      { dist: 40, angleOff: 0.7,  cls: 'td_2' }
+    ];
+    dummySpecs.forEach(spec => {
+      const a = toEnemyAngle + spec.angleOff;
+      const x = playerBase.x + Math.cos(a)*spec.dist;
+      const z = playerBase.z + Math.sin(a)*spec.dist;
+      const dummy = new BattleTank(spec.cls, false, x, z, a + Math.PI, true);
+      dummy.isTrainingDummy = true;
+      tanks.push(dummy);
+    });
+  } else if (onlineMode) {
+    // боты не создаются - противники и союзники это подключённые игроки (remoteTanks),
+    // уже добавленные в tanks[] при join/подключении в ангаре
+    flushPendingRemotePlayers();
+  } else {
+    const allyClasses = ['light_1','heavy_2','td_1'];
+    allyClasses.forEach(cls => {
+      const p = spawnAround(bases.ally, toEnemyAngle);
+      tanks.push(new BattleTank(cls, false, p.x, p.z, toEnemyAngle, false));
+    });
+
+    const enemyClasses = ['light_2','medium_2','heavy_1','td_2','arty_1'];
+    const toAllyAngle = toEnemyAngle + Math.PI;
+    enemyClasses.forEach(cls => {
+      const p = spawnAround(bases.enemy, toAllyAngle);
+      tanks.push(new BattleTank(cls, false, p.x, p.z, toAllyAngle, true));
+    });
+  }
+
+  activeCamera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 400);
+  sniperMode = false;
+
+  document.getElementById('selfName').textContent = playerTank.def.name;
+  updateModuleIcons();
+  setShellType('AP');
+  buildTeamRoster();
+  battleClock = new THREE.Clock();
+}
+
+/* ======================================================================
+   УПРАВЛЕНИЕ (клавиатура + мышь с pointer lock)
+   ====================================================================== */
+
+const keys = {};
+window.addEventListener('keydown', e => {
+  if (keys[e.key.toLowerCase()]) return; // игнорируем автоповтор при удержании клавиши
+  keys[e.key.toLowerCase()] = true;
+  if (e.key === 'Shift' && currentMode === 'battle' && battleActive) {
+    sniperMode = !sniperMode;
+  }
+  if (currentMode === 'battle' && battleActive && playerTank && playerTank.alive) {
+    if (e.key === 'r' || e.key === 'R' || e.key === 'к' || e.key === 'К') useRepairKitUI();
+    if (e.key === '1') setShellType('AP');
+    if (e.key === '2') setShellType('APCR');
+    if (e.key === '3') setShellType('HE');
+  }
+});
+window.addEventListener('keyup', e => {
+  keys[e.key.toLowerCase()] = false;
+});
+
+function setShellType(type) {
+  if (!playerTank) return;
+  playerTank.shellType = type;
+  document.querySelectorAll('#ammoRow span').forEach(s => s.classList.toggle('active', s.dataset.type === type));
+}
+document.querySelectorAll('#ammoRow span').forEach(s => {
+  s.addEventListener('click', () => setShellType(s.dataset.type));
+});
+
+function useRepairKitUI() {
+  if (!playerTank) return;
+  const ok = playerTank.useRepairKit();
+  document.getElementById('repairCount').textContent = playerTank.repairKits;
+  if (ok) { logHit('Ремкомплект использован', '#7a8f4a'); spawnFloatingText('РЕМОНТ', '#7a8f4a', false); }
+  updateModuleIcons();
+}
+document.getElementById('repairBtn').addEventListener('click', useRepairKitUI);
+
+function updateModuleIcons() {
+  if (!playerTank) return;
+  document.getElementById('modTracks').classList.toggle('broken', playerTank.modules.tracks.broken);
+  document.getElementById('modEngine').classList.toggle('broken', playerTank.modules.engine.broken);
+  document.getElementById('modGun').classList.toggle('broken', playerTank.modules.gun.broken);
+  document.getElementById('repairCount').textContent = playerTank.repairKits;
+  document.getElementById('repairBtn').disabled = playerTank.repairKits <= 0;
+}
+
+renderer.domElement.addEventListener('click', () => {
+  if (isMobileMode) return;
+  if (currentMode === 'battle' && battleActive && renderer.domElement.requestPointerLock) {
+    // Pointer Lock используется только косметически (скрывает курсор), если браузер это разрешит.
+    // Наведение работает независимо от того, удалось ли его получить.
+    try { renderer.domElement.requestPointerLock(); } catch (e) {}
+  }
+});
+document.addEventListener('pointerlockchange', () => {
+  pointerLocked = document.pointerLockElement === renderer.domElement;
+});
+
+// Наведение через обычное движение мыши - НЕ требует Pointer Lock (тот часто блокируется
+// в песочнице/iframe, поэтому раньше наведение могло не работать вовсе). movementX/Y доступны
+// в обычных событиях mousemove независимо от статуса захвата курсора.
+window.addEventListener('mousemove', (e) => {
+  if (isMobileMode || !playerTank || !playerTank.alive || currentMode !== 'battle' || !battleActive) return;
+
+  if (sniperMode && playerTank.def.isArty) {
+    const artySens = 0.35;
+    artyAimX += e.movementX * artySens;
+    artyAimZ += e.movementY * artySens;
+    const maxRange = SHELL_SPEED * SHELL_SPEED / GRAVITY; // максимальная теоретическая дальность по баллистике
+    const d = Math.hypot(artyAimX-playerTank.x, artyAimZ-playerTank.z);
+    if (d > maxRange) { const k = maxRange/d; artyAimX = playerTank.x + (artyAimX-playerTank.x)*k; artyAimZ = playerTank.z + (artyAimZ-playerTank.z)*k; }
+    return;
+  }
+
+  const sens = 0.0022;
+  playerTank.turretYaw += e.movementX * sens;
+  const def = playerTank.def;
+  playerTank.turretPitch = clamp(playerTank.turretPitch - e.movementY * sens, def.pitchMin, def.pitchMax);
+});
+window.addEventListener('mousedown', (e) => {
+  if (currentMode !== 'battle' || !battleActive || isMobileMode) return;
+  if (e.button === 2) sniperMode = !sniperMode;
+  if (e.button === 0) fireShell(playerTank);
+});
+window.addEventListener('contextmenu', (e) => { if (currentMode === 'battle') e.preventDefault(); });
+
+/* ======================================================================
+   МОБИЛЬНЫЙ РЕЖИМ: виртуальный джойстик движения + свайп наведения + кнопки
+   ====================================================================== */
+
+let mobileThrottle = 0, mobileTurn = 0;
+
+function detectMobileByDefault() {
+  return ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+}
+
+function setMobileMode(on) {
+  isMobileMode = on;
+  document.getElementById('mobileControls').classList.toggle('active', on);
+  document.getElementById('viewModeHint').style.display = on ? 'none' : 'block';
+  document.getElementById('mobileToggle').textContent = on ? '🖥 ПК-РЕЖИМ' : '📱 МОБИЛЬНЫЙ РЕЖИМ';
+  document.body.classList.toggle('mobile-hud', on);
+  if (on) tryLockLandscape();
+}
+
+function tryLockLandscape() {
+  try {
+    if (screen.orientation && screen.orientation.lock) {
+      screen.orientation.lock('landscape').catch(() => {});
+    }
+  } catch (e) { /* блокировка ориентации недоступна в этом браузере/контексте - используем CSS-подсказку поворота */ }
+}
+
+document.getElementById('mobileToggle').addEventListener('click', () => setMobileMode(!isMobileMode));
+if (detectMobileByDefault()) setMobileMode(true);
+
+// --- виртуальный джойстик (движение корпуса) ---
+const joyZone = document.getElementById('joystickZone');
+const joyStick = document.getElementById('joystickStick');
+let joyActive = false, joyTouchId = null, joyCenterX = 0, joyCenterY = 0;
+
+function joyStart(x, y, id) {
+  joyActive = true; joyTouchId = id;
+  const rect = joyZone.getBoundingClientRect();
+  joyCenterX = rect.left + rect.width/2; joyCenterY = rect.top + rect.height/2;
+  joyMove(x, y);
+}
+function joyMove(x, y) {
+  if (!joyActive) return;
+  const dx = x - joyCenterX, dy = y - joyCenterY;
+  const maxR = 45;
+  const d = Math.min(Math.hypot(dx,dy), maxR);
+  const ang = Math.atan2(dy, dx);
+  const sx = Math.cos(ang)*d, sy = Math.sin(ang)*d;
+  joyStick.style.transform = `translate(${sx}px, ${sy}px)`;
+  mobileThrottle = clamp(-sy / maxR, -1, 1);   // вверх - вперёд
+  mobileTurn = clamp(sx / maxR, -1, 1);
+}
+function joyEnd() {
+  joyActive = false; joyTouchId = null;
+  joyStick.style.transform = 'translate(0,0)';
+  mobileThrottle = 0; mobileTurn = 0;
+}
+joyZone.addEventListener('touchstart', e => { e.preventDefault(); const t = e.changedTouches[0]; joyStart(t.clientX, t.clientY, t.identifier); }, {passive:false});
+joyZone.addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) if (t.identifier === joyTouchId) joyMove(t.clientX, t.clientY);
+}, {passive:false});
+joyZone.addEventListener('touchend', e => { e.preventDefault(); joyEnd(); }, {passive:false});
+joyZone.addEventListener('touchcancel', e => { e.preventDefault(); joyEnd(); }, {passive:false});
+
+// --- зона наведения башни свайпом (правая половина экрана) ---
+const aimZone = document.getElementById('aimZone');
+let aimTouchId = null, aimLastX = 0, aimLastY = 0;
+
+aimZone.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const t = e.changedTouches[0];
+  aimTouchId = t.identifier; aimLastX = t.clientX; aimLastY = t.clientY;
+}, {passive:false});
+aimZone.addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    if (t.identifier !== aimTouchId || !playerTank || !playerTank.alive) continue;
+    const dx = t.clientX - aimLastX;
+    const dy = t.clientY - aimLastY;
+
+    if (sniperMode && playerTank.def.isArty) {
+      const artySens = 0.5;
+      artyAimX += dx * artySens; artyAimZ += dy * artySens;
+      const maxRange = SHELL_SPEED * SHELL_SPEED / GRAVITY;
+      const d = Math.hypot(artyAimX-playerTank.x, artyAimZ-playerTank.z);
+      if (d > maxRange) { const k = maxRange/d; artyAimX = playerTank.x + (artyAimX-playerTank.x)*k; artyAimZ = playerTank.z + (artyAimZ-playerTank.z)*k; }
+    } else {
+      const sens = sniperMode ? 0.0028 : 0.005;
+      playerTank.turretYaw += dx * sens;
+      const def = playerTank.def;
+      playerTank.turretPitch = clamp(playerTank.turretPitch - dy * sens, def.pitchMin, def.pitchMax);
+    }
+    aimLastX = t.clientX; aimLastY = t.clientY;
+  }
+}, {passive:false});
+aimZone.addEventListener('touchend', e => { e.preventDefault(); aimTouchId = null; }, {passive:false});
+
+// --- кнопки ---
+document.getElementById('fireBtnMobile').addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (playerTank && playerTank.alive) fireShell(playerTank);
+}, {passive:false});
+document.getElementById('sniperBtnMobile').addEventListener('touchstart', e => {
+  e.preventDefault();
+  sniperMode = !sniperMode;
+}, {passive:false});
+
+/* ======================================================================
+   ОБНОВЛЕНИЕ БОЯ
+   ====================================================================== */
+
+function updateBattle(dt) {
+  battleTimer -= dt;
+
+  if (playerTank.alive) {
+    let throttle = 0, turnInput = 0;
+    if (keys['w']) throttle += 1;
+    if (keys['s']) throttle -= 1;
+    if (keys['a']) turnInput -= 1;
+    if (keys['d']) turnInput += 1;
+    if (isMobileMode) { throttle += mobileThrottle; turnInput += mobileTurn; }
+    throttle = clamp(throttle, -1, 1); turnInput = clamp(turnInput, -1, 1);
+    playerTank.hullAngle += turnInput * playerTank.def.turnSpeed * dt;
+    moveTank(playerTank, dt, throttle);
+    playerTank.reloadTimer = Math.max(0, playerTank.reloadTimer - dt);
+    playerTank.updateMeshTransform();
+
+    // разброс растёт при движении/повороте, сужается в покое (как прицеливание в оригинале)
+    const isMoving = Math.abs(throttle) > 0.01 || Math.abs(turnInput) > 0.01;
+    const def = playerTank.def;
+    if (isMoving) playerTank.spread = Math.min(def.spreadMax, playerTank.spread + def.spreadGrowRate*dt*3);
+    else playerTank.spread = Math.max(def.spreadMin, playerTank.spread - def.spreadShrinkRate*dt);
+
+    document.getElementById('selfHpFill').style.width = (100*Math.max(playerTank.hp,0)/playerTank.maxHp) + '%';
+    document.getElementById('selfHpText').textContent = `${Math.max(Math.round(playerTank.hp),0)}/${playerTank.maxHp}`;
+
+    const reloadMult = playerTank.getReloadMultiplier();
+    const fullReload = playerTank.def.reload * reloadMult;
+    document.getElementById('reloadFill').style.width = (100*(1 - playerTank.reloadTimer/fullReload)) + '%';
+    const reloadTxt = document.getElementById('reloadStateText');
+    reloadTxt.textContent = playerTank.reloadTimer > 0 ? playerTank.reloadTimer.toFixed(1) + ' с' : 'ЗАРЯЖЕНО';
+
+    playerTank.updateModules(dt);
+    updateModuleIcons();
+
+    const spreadPx = clamp(18 + playerTank.spread * 900, 18, 160);
+    const sc = document.getElementById('spreadCircle');
+    sc.style.width = spreadPx + 'px'; sc.style.height = spreadPx + 'px';
+  }
+
+  for (const t of tanks) if (!t.isPlayer && !t.isRemote && !t.isTrainingDummy) {
+    t.reloadTimer = Math.max(0, t.reloadTimer - dt);
+    updateBotAI(t, dt);
+    // у ботов упрощённая модель разброса: держится ближе к среднему значению класса
+    t.spread = (t.def.spreadMax + t.def.spreadMin) / 1.7;
+  }
+
+  resolveTankCollisions(dt);
+  updateSpotting(dt);
+  updateCapture(dt);
+  netSendState(dt);
+
+  for (let i = shells.length-1; i>=0; i--) {
+    const s = shells[i];
+    s.x += s.vx*dt; s.z += s.vz*dt;
+    if (s.useGravity) { s.vy -= GRAVITY*dt; s.y += s.vy*dt; }
+    s.life -= dt;
+    if (s.tracerMesh) s.tracerMesh.position.set(s.x, s.y, s.z);
+
+    let removed = false;
+
+    // снаряд упал на землю (актуально только для баллистики игрока) - с учётом рельефа холмов
+    if (s.useGravity && s.y <= getTerrainHeight(s.x, s.z)) {
+      spawnSpark(s.x, Math.max(s.y,0.1), s.z, 0x8a7a5a, 8); battleScene.remove(s.tracerMesh); shells.splice(i,1); continue;
+    }
+
+    for (const ob of obstacles3D) {
+      if (ob.destroyed) continue;
+      const insideFootprint = Math.abs(s.x-ob.x) < ob.hw && Math.abs(s.z-ob.z) < ob.hd;
+      // снаряды без гравитации (боты) всегда останавливаются препятствием;
+      // снаряд игрока пролетает над препятствием, если летит выше его высоты
+      const blockedByHeight = !s.useGravity || s.y < ob.height;
+      if (insideFootprint && blockedByHeight) {
+        spawnSpark(s.x, s.y, s.z, 0x999999, 8); battleScene.remove(s.tracerMesh); shells.splice(i,1); removed = true;
+        if (ob.destructible) {
+          const dmg = Math.round((s.owner.def.gunDamage||30) * (s.profile ? s.profile.dmgMult : 1) * (s.dmgShare||1));
+          damageObstacle(ob, dmg);
+        }
+        break;
+      }
+    }
+    if (removed) continue;
+    if (s.life <= 0) { battleScene.remove(s.tracerMesh); shells.splice(i,1); continue; }
+
+    for (const t of tanks) {
+      if (t === s.owner || !t.alive) continue;
+      const horizHit = Math.hypot(s.x-t.x, s.z-t.z) < 1.8;
+      const vertHit = !s.useGravity || Math.abs(s.y - ((t.y||0) + TARGET_HIT_HEIGHT)) < TARGET_HIT_TOLERANCE;
+      if (horizHit && vertHit) { resolveHit(s, t); battleScene.remove(s.tracerMesh); shells.splice(i,1); break; }
+    }
+  }
+
+  for (let i=particles.length-1;i>=0;i--){
+    const p = particles[i];
+    p.mesh.position.x += p.vx*dt; p.mesh.position.y += p.vy*dt; p.mesh.position.z += p.vz*dt;
+    p.vy -= 9*dt; p.life -= dt;
+    if (p.life <= 0) { battleScene.remove(p.mesh); particles.splice(i,1); }
+  }
+
+  updateCamera();
+  updateMinimap();
+  updateSpotLabels();
+  updateTeamBars();
+  updateTeamRoster();
+  updateTimerUI();
+  checkBattleEnd();
+}
+
+let artyAimX = 0, artyAimZ = 0, artyAimInit = false;
+let artyMarkerMesh = null;
+
+// решение баллистики "навесом": по дальности и скорости снаряда находим угол возвышения
+// (берём решение "по крутой дуге", это ближе к реальной стрельбе арты, чем настильное)
+function computeArtyPitch(dist, speed) {
+  const g = GRAVITY;
+  let s = (dist * g) / (speed * speed);
+  s = clamp(s, -1, 1);
+  return (Math.PI - Math.asin(s)) / 2;
+}
+
+function ensureArtyMarker() {
+  if (artyMarkerMesh) return;
+  const ringGeo = new THREE.RingGeometry(1.6, 2.0, 24);
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0xff5a2a, side: THREE.DoubleSide, transparent:true, opacity:0.85 });
+  artyMarkerMesh = new THREE.Mesh(ringGeo, ringMat);
+  artyMarkerMesh.rotation.x = -Math.PI/2;
+  battleScene.add(artyMarkerMesh);
+}
+
+function updateCamera() {
+  if (!playerTank) return;
+  const yaw = playerTank.turretYaw;
+  const pitch = playerTank.turretPitch;
+
+  if (sniperMode && playerTank.def.isArty) {
+    // === АРТИЛЛЕРИЙСКИЙ ПРИЦЕЛ: вид сверху с меткой точки падения снаряда ===
+    if (!artyAimInit) {
+      artyAimX = playerTank.x + Math.cos(yaw)*40;
+      artyAimZ = playerTank.z + Math.sin(yaw)*40;
+      artyAimInit = true;
+    }
+    ensureArtyMarker();
+
+    const dist = Math.hypot(artyAimX-playerTank.x, artyAimZ-playerTank.z);
+    const speed = SHELL_SPEED * (SHELL_PROFILES[playerTank.shellType]||SHELL_PROFILES.AP).speedMult;
+    const neededPitch = computeArtyPitch(dist, speed);
+    const inRange = neededPitch >= playerTank.def.pitchMin && neededPitch <= playerTank.def.pitchMax && !isNaN(neededPitch);
+
+    playerTank.turretYaw = Math.atan2(artyAimZ-playerTank.z, artyAimX-playerTank.x);
+    playerTank.turretPitch = clamp(neededPitch, playerTank.def.pitchMin, playerTank.def.pitchMax);
+
+    const markerY = getTerrainHeight(artyAimX, artyAimZ) + 0.15;
+    artyMarkerMesh.position.set(artyAimX, markerY, artyAimZ);
+    artyMarkerMesh.material.color.setHex(inRange ? 0xff5a2a : 0x666666);
+
+    activeCamera.fov = 50;
+    const camHeight = 60;
+    // камера следует за точкой прицеливания (а не за танком!) - иначе прицел визуально "прилипает"
+    // к танку и кажется, что курсор никуда не двигает точку падения снаряда
+    activeCamera.position.set(artyAimX, markerY + camHeight, artyAimZ);
+    activeCamera.up.set(0, 0, -1); // top-down: "вверх экрана" = -Z мира, иначе картинка переворачивается при взгляде вниз
+    activeCamera.lookAt(artyAimX, markerY, artyAimZ);
+
+    document.getElementById('artyAimMarkerHint').style.display = 'block';
+    document.getElementById('artyAimMarkerHint').textContent = inRange
+      ? `Дистанция ${dist.toFixed(0)}м — цель поражаема`
+      : `Дистанция ${dist.toFixed(0)}м — ВНЕ ДОСЯГАЕМОСТИ`;
+    document.getElementById('crosshair').style.display = 'block'; // перекрестие = центр экрана = текущая точка прицеливания
+    activeCamera.updateProjectionMatrix();
+    updatePitchGauge();
+    updateSpotBulb();
+    return;
+  }
+
+  activeCamera.up.set(0, 1, 0); // сброс "верха" камеры после выхода из режима арты
+  document.getElementById('artyAimMarkerHint').style.display = 'none';
+
+  if (sniperMode) {
+    activeCamera.fov = 25;
+    const camX = playerTank.x + Math.cos(yaw)*playerTank.muzzleOffset*0.5;
+    const camZ = playerTank.z + Math.sin(yaw)*playerTank.muzzleOffset*0.5;
+    const camY = (playerTank.y||0) + playerTank.mesh.turretHeight + 0.2;
+    activeCamera.position.set(camX, camY, camZ);
+    const lookX = camX + Math.cos(yaw)*Math.cos(pitch)*10;
+    const lookZ = camZ + Math.sin(yaw)*Math.cos(pitch)*10;
+    const lookY = camY + Math.sin(pitch)*10;
+    activeCamera.lookAt(lookX, lookY, lookZ);
+  } else {
+    activeCamera.fov = 70;
+    const dist = 10, height = 4.5;
+    const camX = playerTank.x - Math.cos(yaw)*dist;
+    const camZ = playerTank.z - Math.sin(yaw)*dist;
+    activeCamera.position.set(camX, (playerTank.y||0) + height, camZ);
+    // обзорная камера немного следует за наклоном ствола, чтобы было видно, куда целимся
+    activeCamera.lookAt(playerTank.x + Math.cos(yaw)*6, (playerTank.y||0) + 1.6 + pitch*8, playerTank.z + Math.sin(yaw)*6);
+  }
+  activeCamera.updateProjectionMatrix();
+  document.getElementById('crosshair').style.display = 'block';
+  updatePitchGauge();
+  updateSpotBulb();
+  updateTargetPlate();
+}
+
+function updatePitchGauge() {
+  const gauge = document.getElementById('pitchGauge');
+  if (!playerTank || !playerTank.alive) { gauge.style.display = 'none'; return; }
+  gauge.style.display = sniperMode ? 'block' : 'none';
+  const def = playerTank.def;
+  const range = def.pitchMax - def.pitchMin;
+  const t = clamp((playerTank.turretPitch - def.pitchMin) / range, 0, 1); // 0 = склонение макс, 1 = возвышение макс
+  const marker = document.getElementById('pitchMarker');
+  marker.style.top = ((1 - t) * 100) + '%';
+  const zero = document.getElementById('pitchZero');
+  const zeroT = clamp((0 - def.pitchMin) / range, 0, 1);
+  zero.style.top = ((1 - zeroT) * 100) + '%';
+}
+
+function updateSpotBulb() {
+  const bulb = document.getElementById('spotBulb');
+  if (playerTank && playerTank.alive && playerTank.spottedTimer > 0) bulb.classList.add('lit');
+  else bulb.classList.remove('lit');
+}
+
+// подсветка цели под перекрестием: наводим луч из камеры вперёд и проверяем,
+// не попадает ли в засвеченный вражеский танк - показываем табличку с именем/дистанцией/HP (как в оригинале)
+const aimRaycaster = new THREE.Raycaster();
+let highlightedTank = null;
+
+function clearHighlight(t) {
+  if (!t) return;
+  t.mesh.hullMesh.material.emissive.setHex(0x000000);
+  t.mesh.glacisMesh.material.emissive.setHex(0x000000);
+  t.mesh.turretMesh.material.emissive.setHex(0x000000);
+}
+
+function applyPenetrationHighlight(t, playerT) {
+  const impactAngle = Math.atan2(t.z - playerT.z, t.x - playerT.x);
+  const face = t.getHitFace(impactAngle);
+  const { effective, angleFromNormalDeg } = t.effectiveArmor(face, impactAngle);
+  const gun = playerT.def;
+
+  let color, chance;
+  if (angleFromNormalDeg > t.def.ricochetAngle) { color = 0x3355cc; chance = 'rikошет'; }
+  else if (gun.gunPen < effective * 0.85) { color = 0x2a7a2a; chance = 'нет пробития'; }
+  else if (gun.gunPen < effective * 1.15) { color = 0xb8942a; chance = 'вероятно'; }
+  else { color = 0x9c2a2a; chance = 'пробитие'; }
+
+  t.mesh.hullMesh.material.emissive.setHex(face==='front' ? color : 0x000000);
+  t.mesh.glacisMesh.material.emissive.setHex(face==='front' ? color : 0x000000);
+  t.mesh.turretMesh.material.emissive.setHex(color);
+  t.mesh.hullMesh.material.emissiveIntensity = 0.55;
+  t.mesh.glacisMesh.material.emissiveIntensity = 0.55;
+  t.mesh.turretMesh.material.emissiveIntensity = 0.55;
+
+  return { face, effective, chance };
+}
+
+function updateTargetPlate() {
+  const plate = document.getElementById('targetPlate');
+  if (!playerTank || !playerTank.alive) { plate.style.display = 'none'; clearHighlight(highlightedTank); highlightedTank = null; return; }
+
+  aimRaycaster.setFromCamera({ x: 0, y: 0 }, activeCamera);
+  let best = null, bestDist = Infinity;
+  for (const t of tanks) {
+    if (t === playerTank || !t.alive || !t.mesh.group.visible) continue;
+    const center = new THREE.Vector3(t.x, (t.y||0) + playerTank.mesh.turretHeight, t.z);
+    const dist = aimRaycaster.ray.distanceToPoint(center);
+    const camDist = playerTank ? Math.hypot(t.x-playerTank.x, t.z-playerTank.z) : 0;
+    if (dist < 2.2 && camDist < bestDist) { best = t; bestDist = camDist; }
+  }
+
+  if (best !== highlightedTank) { clearHighlight(highlightedTank); highlightedTank = best; }
+
+  if (best) {
+    const pen = applyPenetrationHighlight(best, playerTank);
+    plate.style.display = 'block';
+    document.getElementById('tpName').textContent = best.def.name + (best.isEnemy ? ' (враг)' : ' (союзник)');
+    document.getElementById('tpDist').textContent = Math.round(bestDist) + ' м · ' + pen.chance;
+    document.getElementById('tpHpFill').style.width = (100*Math.max(best.hp,0)/best.maxHp) + '%';
+  } else {
+    plate.style.display = 'none';
+  }
+}
+
+const MM_SIZE = 220;
+const mmCtx = document.getElementById('minimap').getContext('2d');
+function updateMinimap() {
+  mmCtx.clearRect(0,0,MM_SIZE,MM_SIZE);
+  mmCtx.fillStyle = '#2a3320'; mmCtx.fillRect(0,0,MM_SIZE,MM_SIZE);
+
+  const scale = MM_SIZE / (WORLD_SIZE*2.4);
+  const toMM = (x,z) => [MM_SIZE/2 + x*scale, MM_SIZE/2 + z*scale];
+
+  // сетка
+  mmCtx.strokeStyle = 'rgba(255,255,255,0.06)'; mmCtx.lineWidth = 1;
+  for (let i=1;i<6;i++){
+    const p = i*MM_SIZE/6;
+    mmCtx.beginPath(); mmCtx.moveTo(p,0); mmCtx.lineTo(p,MM_SIZE); mmCtx.stroke();
+    mmCtx.beginPath(); mmCtx.moveTo(0,p); mmCtx.lineTo(MM_SIZE,p); mmCtx.stroke();
+  }
+
+  // препятствия
+  mmCtx.fillStyle = 'rgba(140,120,90,0.55)';
+  for (const ob of obstacles3D) {
+    const [x1,z1] = toMM(ob.x-ob.hw, ob.z-ob.hd);
+    const [x2,z2] = toMM(ob.x+ob.hw, ob.z+ob.hd);
+    mmCtx.fillRect(x1, z1, x2-x1, z2-z1);
+  }
+
+  // граница поля боя
+  mmCtx.strokeStyle = 'rgba(201,161,59,0.5)'; mmCtx.lineWidth = 2;
+  const [bx1,bz1] = toMM(-WORLD_SIZE, -WORLD_SIZE);
+  const [bx2,bz2] = toMM(WORLD_SIZE, WORLD_SIZE);
+  mmCtx.strokeRect(bx1, bz1, bx2-bx1, bz2-bz1);
+
+  // базы команд
+  [['ally', 'rgba(122,143,74,0.8)'], ['enemy', 'rgba(168,64,47,0.8)']].forEach(([key, color]) => {
+    const [bx, bz] = toMM(bases[key].x, bases[key].z);
+    mmCtx.strokeStyle = color; mmCtx.lineWidth = 2;
+    mmCtx.beginPath(); mmCtx.arc(bx, bz, 9, 0, Math.PI*2); mmCtx.stroke();
+  });
+
+  // танки (только видимые: свои всегда, вражеские - только если засвечены)
+  for (const t of tanks) {
+    if (!t.alive) continue;
+    if (t.isEnemy && t.spottedTimer <= 0) continue;
+    const [mx, mz] = toMM(t.x, t.z);
+    const color = t.isPlayer ? '#c9a13b' : (t.isEnemy ? '#a8402f' : '#7a8f4a');
+    mmCtx.fillStyle = color;
+    mmCtx.beginPath(); mmCtx.arc(mx, mz, t.isPlayer?6:4.5, 0, Math.PI*2); mmCtx.fill();
+
+    // направление корпуса
+    mmCtx.strokeStyle = color; mmCtx.lineWidth = 2;
+    mmCtx.beginPath();
+    mmCtx.moveTo(mx, mz);
+    mmCtx.lineTo(mx + Math.cos(t.hullAngle)*(t.isPlayer?12:8), mz + Math.sin(t.hullAngle)*(t.isPlayer?12:8));
+    mmCtx.stroke();
+  }
+
+  // сектор обзора игрока (направление башни)
+  if (playerTank && playerTank.alive) {
+    const [px, pz] = toMM(playerTank.x, playerTank.z);
+    const fovHalf = 0.5;
+    mmCtx.fillStyle = 'rgba(201,161,59,0.15)';
+    mmCtx.beginPath();
+    mmCtx.moveTo(px, pz);
+    mmCtx.arc(px, pz, 34, playerTank.turretYaw-fovHalf, playerTank.turretYaw+fovHalf);
+    mmCtx.closePath();
+    mmCtx.fill();
+  }
+}
+
+const spotLabelPool = [];
+function updateSpotLabels() {
+  const container = document.getElementById('spotLabels');
+  const enemiesSpotted = tanks.filter(t => t.isEnemy && t.alive && t.spottedTimer > 0);
+
+  while (spotLabelPool.length < enemiesSpotted.length) {
+    const div = document.createElement('div');
+    div.className = 'spotIndicator';
+    div.textContent = '▼';
+    container.appendChild(div);
+    spotLabelPool.push(div);
+  }
+  spotLabelPool.forEach((div, i) => {
+    if (i >= enemiesSpotted.length) { div.style.display = 'none'; return; }
+    const t = enemiesSpotted[i];
+    const pos = new THREE.Vector3(t.x, 4.2, t.z);
+    pos.project(activeCamera);
+    if (pos.z > 1) { div.style.display = 'none'; return; } // за камерой
+    const sx = (pos.x*0.5 + 0.5) * window.innerWidth;
+    const sy = (-pos.y*0.5 + 0.5) * window.innerHeight;
+    div.style.display = 'block';
+    div.style.left = sx + 'px';
+    div.style.top = sy + 'px';
+  });
+}
+
+function updateTeamBars() {
+  const allies = tanks.filter(t => !t.isEnemy);
+  const enemies = tanks.filter(t => t.isEnemy);
+  const allyHp = allies.reduce((s,t)=>s+Math.max(t.hp,0),0), allyMax = allies.reduce((s,t)=>s+t.maxHp,0);
+  const enHp = enemies.reduce((s,t)=>s+Math.max(t.hp,0),0), enMax = enemies.reduce((s,t)=>s+t.maxHp,0);
+  document.getElementById('allyBarFill').style.width = (100*allyHp/allyMax)+'%';
+  document.getElementById('enemyBarFill').style.width = (100*enHp/enMax)+'%';
+}
+
+function buildTeamRoster() {
+  const el = document.getElementById('teamRoster');
+  el.innerHTML = `
+    <div class="rosterGroup"><div class="rosterLabel">Союзники</div><div id="rosterAllies"></div></div>
+    <div class="rosterGroup"><div class="rosterLabel">Противники</div><div id="rosterEnemies"></div></div>
+  `;
+}
+
+function updateTeamRoster() {
+  const alliesEl = document.getElementById('rosterAllies');
+  const enemiesEl = document.getElementById('rosterEnemies');
+  if (!alliesEl || !enemiesEl) return;
+
+  const renderEntry = (t, teamClass) => {
+    // враги показывают HP только пока засвечены (или мертвы - тогда видно, что уничтожены);
+    // союзники видны игроку всегда, как и в оригинале
+    const known = !t.isEnemy || t.spottedTimer > 0 || !t.alive;
+    const hpPct = known ? Math.max(0, 100*t.hp/t.maxHp) : 100;
+    const label = known ? t.def.name : '???';
+    return `<div class="rosterEntry ${teamClass}${!t.alive?' dead':''}">
+      <span class="rClass">${label}</span>
+      <div class="rHpBarWrap"><div class="rHpBarFill" style="width:${t.alive?hpPct:0}%"></div></div>
+    </div>`;
+  };
+
+  alliesEl.innerHTML = tanks.filter(t=>!t.isEnemy).map(t=>renderEntry(t,'ally')).join('');
+  enemiesEl.innerHTML = tanks.filter(t=>t.isEnemy).map(t=>renderEntry(t,'enemy')).join('');
+}
+
+function updateTimerUI() {
+  const t = Math.max(0, battleTimer);
+  const m = Math.floor(t/60), s = Math.floor(t%60);
+  document.getElementById('timerVal').textContent = `${m}:${s.toString().padStart(2,'0')}`;
+}
+
+function dist2D(a, b) { return Math.hypot(a.x-b.x, a.z-b.z); }
+
+function updateCapture(dt) {
+  const alliesOnEnemyBase = tanks.filter(t => !t.isEnemy && t.alive && dist2D(t, bases.enemy) < CAP_RADIUS);
+  const enemiesOnEnemyBase = tanks.filter(t => t.isEnemy && t.alive && dist2D(t, bases.enemy) < CAP_RADIUS);
+  const enemiesOnAllyBase = tanks.filter(t => t.isEnemy && t.alive && dist2D(t, bases.ally) < CAP_RADIUS);
+  const alliesOnAllyBase = tanks.filter(t => !t.isEnemy && t.alive && dist2D(t, bases.ally) < CAP_RADIUS);
+
+  const rate = 100 / CAP_TIME;
+
+  if (alliesOnEnemyBase.length > 0 && enemiesOnEnemyBase.length === 0) {
+    captureProgress.allyOnEnemyBase = clamp(captureProgress.allyOnEnemyBase + rate*dt, 0, 100);
+  } else if (enemiesOnEnemyBase.length > 0) {
+    captureProgress.allyOnEnemyBase = clamp(captureProgress.allyOnEnemyBase - rate*dt*2.2, 0, 100); // враг зашёл в зону - захват сбрасывается быстро
+  } else {
+    captureProgress.allyOnEnemyBase = clamp(captureProgress.allyOnEnemyBase - rate*dt*0.4, 0, 100); // никого нет - медленно "остывает"
+  }
+
+  if (enemiesOnAllyBase.length > 0 && alliesOnAllyBase.length === 0) {
+    captureProgress.enemyOnAllyBase = clamp(captureProgress.enemyOnAllyBase + rate*dt, 0, 100);
+  } else if (alliesOnAllyBase.length > 0) {
+    captureProgress.enemyOnAllyBase = clamp(captureProgress.enemyOnAllyBase - rate*dt*2.2, 0, 100);
+  } else {
+    captureProgress.enemyOnAllyBase = clamp(captureProgress.enemyOnAllyBase - rate*dt*0.4, 0, 100);
+  }
+
+  updateCaptureUI(alliesOnEnemyBase, enemiesOnAllyBase);
+}
+
+function updateCaptureUI(alliesOnEnemyBase, enemiesOnAllyBase) {
+  const el = document.getElementById('captureHint');
+  const playerOnEnemyBase = playerTank && playerTank.alive && dist2D(playerTank, bases[playerTank.isEnemy?'ally':'enemy']) < CAP_RADIUS;
+  const playerBaseUnderAttack = playerTank && playerTank.alive &&
+    (playerTank.isEnemy ? enemiesOnAllyBase.length===0 && captureProgress.allyOnEnemyBase>0 && false : false); // зарезервировано на будущее
+
+  const myProgress = playerTank && playerTank.isEnemy ? captureProgress.enemyOnAllyBase : captureProgress.allyOnEnemyBase;
+  const enemyProgress = playerTank && playerTank.isEnemy ? captureProgress.allyOnEnemyBase : captureProgress.enemyOnAllyBase;
+
+  if (playerOnEnemyBase && myProgress > 0) {
+    el.style.display = 'block';
+    el.textContent = `ЗАХВАТ БАЗЫ: ${myProgress.toFixed(0)}%`;
+    el.style.color = '#c9a13b';
+  } else if (enemyProgress > 5) {
+    el.style.display = 'block';
+    el.textContent = `ВАША БАЗА ЗАХВАТЫВАЕТСЯ: ${enemyProgress.toFixed(0)}%`;
+    el.style.color = '#a8402f';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+function checkBattleEnd() {
+  if (trainingMode) return; // тренировка не заканчивается сама - выход только вручную
+  const enemiesAlive = tanks.some(t => t.isEnemy && t.alive);
+  const alliesAlive = tanks.some(t => !t.isEnemy && t.alive);
+  const playerIsEnemyTeam = playerTank && playerTank.isEnemy;
+
+  if (captureProgress.allyOnEnemyBase >= 100) { endBattle(!playerIsEnemyTeam); return; }
+  if (captureProgress.enemyOnAllyBase >= 100) { endBattle(!!playerIsEnemyTeam); return; }
+
+  if (!enemiesAlive) { endBattle(true); }
+  else if (!alliesAlive || battleTimer <= 0) { endBattle(false); }
+}
+
+function endBattle(victory) {
+  if (!battleActive) return;
+  battleActive = false;
+  if (document.pointerLockElement) document.exitPointerLock();
+
+  playerProgress.battles++;
+  if (victory) playerProgress.wins++;
+  const xpGain = Math.round(battleStats.damage*0.6 + battleStats.kills*120 + (victory?300:80));
+  playerProgress.xp += xpGain;
+
+  document.getElementById('resultTitle').textContent = victory ? 'ПОБЕДА' : 'ПОРАЖЕНИЕ';
+  document.getElementById('resultTitle').className = victory ? 'victory' : 'defeat';
+  document.getElementById('rsKills').textContent = battleStats.kills;
+  document.getElementById('rsDamage').textContent = battleStats.damage;
+  document.getElementById('rsXp').textContent = xpGain;
+
+  document.getElementById('battleHUD').style.display = 'none';
+  document.getElementById('resultScreen').style.display = 'flex';
+}
+
+/* ======================================================================
+   ПЕРЕКЛЮЧЕНИЕ РЕЖИМОВ / ГЛАВНЫЙ ЦИКЛ
+   ====================================================================== */
+
+function battleLoop() {
+  if (currentMode !== 'battle') return;
+  const dt = Math.min(battleClock.getDelta(), 0.05);
+  if (battleActive) updateBattle(dt);
+  renderer.render(battleScene, activeCamera);
+  requestAnimationFrame(battleLoop);
+}
+
+function enterHangar() {
+  currentMode = 'hangar';
+  document.getElementById('hangarUI').style.display = 'flex';
+  document.getElementById('battleHUD').style.display = 'none';
+  document.getElementById('resultScreen').style.display = 'none';
+  document.getElementById('startOverlay').style.display = 'none';
+  document.getElementById('statBattles').textContent = playerProgress.battles;
+  document.getElementById('statWins').textContent = playerProgress.wins;
+  document.getElementById('statXp').textContent = playerProgress.xp;
+  document.getElementById('spreadCircle').style.display = 'none';
+  document.getElementById('mobileControls').classList.remove('active');
+  activeCamera = hangarCamera;
+  requestAnimationFrame(hangarLoop);
+}
+
+function enterBattle() {
+  currentMode = 'battle';
+  document.getElementById('hangarUI').style.display = 'none';
+  document.getElementById('resultScreen').style.display = 'none';
+  initBattle();
+  document.getElementById('battleHUD').style.display = 'block';
+  document.getElementById('spreadCircle').style.display = 'block';
+  document.getElementById('startOverlay').style.display = 'flex';
+  document.getElementById('hitLog').innerHTML = '';
+  document.getElementById('exitTrainingBtn').style.display = trainingMode ? 'block' : 'none';
+  if (isMobileMode) document.getElementById('mobileControls').classList.add('active');
+  battleActive = false;
+}
+
+document.getElementById('exitTrainingBtn').addEventListener('click', () => {
+  battleActive = false;
+  if (document.pointerLockElement) document.exitPointerLock();
+  enterHangar();
+});
+
+document.getElementById('battleBtn').addEventListener('click', enterBattle);
+document.getElementById('backToHangarBtn').addEventListener('click', enterHangar);
+document.getElementById('startOverlay').addEventListener('click', () => {
+  document.getElementById('startOverlay').style.display = 'none';
+  battleActive = true;
+  if (!isMobileMode) {
+    renderer.domElement.requestPointerLock();
+  } else {
+    // полноэкранный режим часто требуется браузером, чтобы разрешить блокировку ориентации
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (req) { try { req.call(el).then(tryLockLandscape).catch(() => {}); } catch (e) {} }
+    else tryLockLandscape();
+  }
+  requestAnimationFrame(battleLoop);
+});
+
+/* ======================================================================
+   СТАРТ
+   ====================================================================== */
+
+initHangar();
+enterHangar();
+</script>
+</body>
+</html>
