@@ -1,0 +1,15 @@
+{
+  "name": "tank-battle-relay-server",
+  "version": "1.0.0",
+  "description": "Relay-сервер мультиплеера для 3D танкового боя (комнаты + пересылка состояния между игроками)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}
