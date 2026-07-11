@@ -1,26 +1,13 @@
 /**
  * Сервер мультиплеера для 3D танкового боя.
- *
  * Архитектура: relay-сервер (не авторитативная симуляция).
- * Каждый клиент сам считает физику и попадания СВОЕГО танка и танков,
- * которые он видит, а сервер только:
- *   1) распределяет игроков по комнатам и командам (ally/enemy),
- *   2) пересылает сообщения от одного клиента остальным в той же комнате.
- *
- * Это осознанное упрощение ради реалистичного объёма работы:
- * честная античит-защита требует серверной симуляции всей физики и урона,
- * что кратно больше по объёму. Для игры с друзьями (без цели защититься
- * от читеров) такой архитектуры достаточно и она гораздо быстрее
- * разворачивается на бесплатном хостинге.
- *
+ * 
  * ЗАПУСК ЛОКАЛЬНО:
  *   npm install
  *   node server.js
- *   (по умолчанию слушает порт из переменной окружения PORT или 8080)
  *
- * ДЕПЛОЙ НА БЕСПЛАТНЫЙ ХОСТИНГ (см. подробности в README.md):
- *   Render.com / Railway.app / Glitch.com - подключаете репозиторий,
- *   команда запуска "node server.js", порт браузер сообщает сам через process.env.PORT.
+ * ДЕПЛОЙ НА БЕСПЛАТНЫЙ ХОСТИНГ:
+ *   Render.com / Railway.app / Glitch.com
  */
 
 const http = require('http');
@@ -28,10 +15,6 @@ const WebSocket = require('ws');
 
 const PORT = process.env.PORT || 8080;
 
-// Простейшая раздача статики не нужна - клиент (index.html) можно хостить
-// отдельно (например, тот же бесплатный хостинг умеет отдавать статику),
-// сервер отвечает только за WebSocket. Дополнительно отдаём health-check
-// на "/", чтобы бесплатные хостинги видели, что сервис "живой".
 const httpServer = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end('Tank battle multiplayer relay server is running.\n');
@@ -83,8 +66,20 @@ wss.on('connection', (ws) => {
   let playerId = null;
 
   ws.on('message', (raw) => {
+    // Ограничение размера сообщения (10 КБ)
+    if (raw.length > 10240) {
+      ws.close(1009, 'Message too large');
+      return;
+    }
+
     let msg;
     try { msg = JSON.parse(raw); } catch (e) { return; }
+
+    // === ПИНГ-ПОНГ (для поддержания соединения) ===
+    if (msg.t === 'ping') {
+      ws.send(JSON.stringify({ t: 'pong' }));
+      return;
+    }
 
     // === ВХОД В КОМНАТУ ===
     if (msg.t === 'join') {
@@ -104,23 +99,21 @@ wss.on('connection', (ws) => {
 
       room.players.set(playerId, { ws, name, team, classId });
 
-      // отвечаем новому игроку: его id/команда + список уже подключённых
       const existing = [...room.players.entries()]
         .filter(([id]) => id !== playerId)
         .map(([id, p]) => ({ id, name: p.name, team: p.team, classId: p.classId }));
 
       ws.send(JSON.stringify({ t: 'joined', id: playerId, team, players: existing }));
 
-      // уведомляем остальных о новом игроке
       broadcastToRoom(room, { t: 'player_joined', id: playerId, name, team, classId }, playerId);
       return;
     }
 
-    if (!currentRoom || !playerId) return; // сообщения без join игнорируем
+    if (!currentRoom || !playerId) return;
     const room = rooms.get(currentRoom);
     if (!room) return;
 
-    // === ЛЮБОЕ ДРУГОЕ СООБЩЕНИЕ (state/shot/hitResult/...) - просто ретранслируем ===
+    // === ЛЮБОЕ ДРУГОЕ СООБЩЕНИЕ (state/fire/hitResult/...) - ретранслируем ===
     msg.from = playerId;
     broadcastToRoom(room, msg, playerId);
   });
