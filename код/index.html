@@ -1,58 +1,16 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <title>Проверка IP через WebRTC</title>
-</head>
-<body>
-
-    <h1 id="step">Ожидание локальной проверки...</h1>
-    <p id="your-ip" style="color: gray; font-size: 14px;"></p>
-
-    <script>
-        // Белый список IP (локальные адреса обычно начинаются на 192.168.x.x или 10.x.x.x)
-        const ALLOWED_IPS = ["192.168.1.50", "94.229.31.188", "683a66bb-f506-42cd-b2a5-f8ebd576d106.local"]; 
-
-        // Функция извлечения IP через создание фейкового WebRTC соединения
-        function getLocalIP(callback) {
-            const rtc = new RTCPeerConnection({ iceServers: [] });
-            rtc.createDataChannel(""); // Создаем пустой канал данных
-            
-            rtc.createOffer().then(offer => rtc.setLocalDescription(offer));
-            
-            rtc.onicecandidate = (event) => {
-                if (!event || !event.candidate) return;
-                
-                // Регулярное выражение для поиска IPv4 адреса в строке кандидата
-                const parts = event.candidate.candidate.split(" ");
-                const ip = parts[4];
-                
-                // Проверяем, что это действительно похожий на IP адрес
-                if (ip && ip.includes('.')) {
-                    callback(ip);
-                    rtc.onicecandidate = null; // Останавливаем поиск после первого найденного IP
-                }
-            };
-        }
-
-        // Запуск проверки
-        getLocalIP((userIP) => {
-            console.log('Найден локальный IP:', userIP);
-            
-            const stepElement = document.getElementById("step");
-            const ipHintElement = document.getElementById("your-ip");
-
-            if (ALLOWED_IPS.includes(userIP)) {
-                stepElement.textContent = "Доступ разрешен. Спасибо!";
-                stepElement.style.color = "green";
-                ipHintElement.textContent = "";
-            } else {
-                stepElement.textContent = "Проверка не пройдена. Доступ ограничен!";
-                stepElement.style.color = "red";
-                ipHintElement.textContent = `Ваш текущий локальный IP: ${userIP} (добавьте его в ALLOWED_IPS)`;
-            }
-        });
-    </script>
-
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>КИРПИЧ — Тот самый. Один. Твёрдый. Купить кирпич онлайн</title>
+    <meta name="description" content="Единственный гаджет, который не глючит, не требует обновлений и не боится падений. Купите кирпич. Просто купите." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;900&family=Manrope:wght@400;600;800&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
